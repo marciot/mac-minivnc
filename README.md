@@ -18,6 +18,15 @@ developed and tested using a RaSCSI device operating as an
 Ethernet bridge, but also works using a Mac with a built-in
 Ethernet port.
 
+How can you help?
+-----------------
+
+You can help this project in one of the following ways:
+
+* Star this project on GitHub to show your support!
+* Sign up to [beta testing in the discussion forum]!
+* Become a GitHub sponsor to help fund my various open-source projects!
+
 Project Goal
 ------------
 
@@ -187,3 +196,4 @@ registers as possible, as to minimize memory access.
 </details>
 
 [Fletcher's checksum]: https://en.wikipedia.org/wiki/Fletcher%27s_checksum
+[beta testing in the discussion forum]: https://github.com/marciot/mac-minivnc/discussions/1
