@@ -121,6 +121,7 @@ Boolean VNCFrameBuffer::checkScreenResolution() {
     int gdWidth = qd.screenBits.bounds.right;
     int gdHeight = qd.screenBits.bounds.bottom;
     int gdDepth = 1;
+    int gdStride = gdWidth/8;
 
     // Update values if this machine has Color QuickDraw
 
@@ -131,6 +132,7 @@ Boolean VNCFrameBuffer::checkScreenResolution() {
         gdWidth  = gdp->gdRect.right;
         gdHeight = gdp->gdRect.bottom;
         gdDepth  = gpx->pixelSize;
+        gdStride = gpx->rowBytes & 0x3FFF;
     }
 
     #if defined(VNC_FB_WIDTH) && defined(VNC_FB_HEIGHT) && defined(VNC_FB_BITS_PER_PIX)
@@ -157,7 +159,7 @@ Boolean VNCFrameBuffer::checkScreenResolution() {
     #endif
     #ifndef VNC_FB_BITS_PER_PIX
         fbDepth = gdDepth;
-        fbStride = gdWidth * gdDepth / 8;
+        fbStride = gdStride;
     #endif
 
     return isMatch;
