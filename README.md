@@ -8,7 +8,7 @@ ground up for best performance on 68k Macintosh computers.
 
 It was originally an experiment to see whether a Macintosh Plus could
 be controlled remotely, but has since been expanded to support color
-on all vintage color Macs!
+on all vintage color Macs! :rainbow:
 
 Compatibility
 -------------
@@ -26,7 +26,7 @@ You can help this project in one of the following ways:
 
 * :sparkles: Star this project on GitHub to show your support!
 * :raising_hand: Sign up to [beta testing in the discussion forum]!
-* :green_heart: Become a GitHub sponsor to help fund my open-source projects!
+* :green_heart: Become a [GitHub sponsor] to help fund my open-source projects!
 
 Project Goal
 ------------
@@ -49,6 +49,7 @@ performance.
 [ChromiVNC]: https://web.archive.org/web/20070208223046/http://www.chromatix.uklinux.net/vnc/index.html
 [Remote Framebuffer Protocol]: https://datatracker.ietf.org/doc/html/rfc6143
 [RaSCSI device]: https://github.com/akuker/RASCSI
+[GitHub sponsor]: https://github.com/sponsors/marciot
 
 Technical Notes
 ---------------
