@@ -13,6 +13,13 @@
 *************************************************************/
 
 /**
+ * Specify a compression level for the color TTRL encoder,
+ * from 0 to 4
+ */
+
+#define COMPRESSION_LEVEL 4
+
+/**
  * To build for a specific resolution, uncomment one of
  * the following. Otherwise, a generic binary will be built
  */

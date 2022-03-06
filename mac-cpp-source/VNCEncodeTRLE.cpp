@@ -13,22 +13,20 @@
 *************************************************************/
 #include <string.h>
 
-void testEncoder();
+#include "VNCConfig.h"
+#include "VNCFrameBuffer.h"
+#include "VNCEncodeTRLE.h"
 
-#define COMPRESSION_LEVEL 5
-
-//#define USE_EXPERIMENTAL_ENCODER
 //#define USE_16_COLOR_TILES
 //#define USE_4_COLOR_TILES
 //#define USE_2_COLOR_TILES
 //#define USE_RLE_COLOR_TILES
 //#define USE_RAW_COLOR_TILES
 //#define USE_NATIVE_COLOR_TILES
-//#define FIRST_PASS_COLOR_COUNT // Count unique colors while RLE encoding?
 //#define DEBUG_TILE_TYPES
 
 #ifdef COMPRESSION_LEVEL
-    #if COMPRESSION_LEVEL == 0
+    #if   COMPRESSION_LEVEL == 0
         #define USE_FAST_MONO_ENCODER
         #define USE_NATIVE_COLOR_TILES
     #elif COMPRESSION_LEVEL == 1
@@ -37,47 +35,33 @@ void testEncoder();
         #define USE_RLE_COLOR_TILES
         #define USE_NATIVE_COLOR_TILES
     #elif COMPRESSION_LEVEL == 3
-        #define FIRST_PASS_COLOR_COUNT
         #define USE_RLE_COLOR_TILES
-        #define USE_2_COLOR_TILES
         #define USE_NATIVE_COLOR_TILES
+        #define USE_2_COLOR_TILES
     #elif COMPRESSION_LEVEL == 4
-        #define FIRST_PASS_COLOR_COUNT
         #define USE_RLE_COLOR_TILES
-        #define USE_RLE_EARLY_ABORT
-        #define USE_2_COLOR_TILES
         #define USE_NATIVE_COLOR_TILES
-    #elif COMPRESSION_LEVEL == 5
-        #define FIRST_PASS_COLOR_COUNT
-        #define USE_RLE_COLOR_TILES
-        #define USE_RLE_EARLY_ABORT
         #define USE_2_COLOR_TILES
         #define USE_4_COLOR_TILES
-        #define USE_NATIVE_COLOR_TILES
     #else
         #error Invalid compression level
     #endif
 #endif
 
-#include "VNCConfig.h"
-#include "VNCFrameBuffer.h"
-#include "VNCEncodeTRLE.h"
-
-#if defined(USE_RLE_EARLY_ABORT) && !defined(USE_NATIVE_COLOR_TILES)
-    #error USE_RLE_EARLY_ABORT requires USE_NATIVE_COLOR_TILES
+#if defined(USE_NATIVE_COLOR_TILES) && defined(USE_RLE_COLOR_TILES)
+    #define USE_RLE_EARLY_ABORT
 #endif
 
-#ifdef USE_EXPERIMENTAL_ENCODER
-    asm unsigned short encodeTileExperimental(const unsigned char *src, unsigned char *dst, unsigned char *buffer, char rows);
+#if defined(USE_2_COLOR_TILES) || defined(USE_4_COLOR_TILES) || defined(USE_16_COLOR_TILES)
+    #define RLE_GATHERS_PALETTE
 #endif
-
 
 #ifndef USE_STDOUT
     #define printf ShowStatus
     int ShowStatus(const char* format, ...);
 #endif
 
-int              tile_y;
+int              tile_x, tile_y;
 unsigned char    lastPaletteSize;
 unsigned char   *fbUpdateBuffer = 0;
 
@@ -86,15 +70,16 @@ unsigned char   *fbUpdateBuffer = 0;
 #define TileReuse    127
 #define TilePlainRLE 128
 
-#define PLAIN_RLE_MAX_TILE_SIZE (1 + 512)
-#define PLAIN_PACKED_TILE_SIZE  (1 + (1 << fbDepth) + 32 * fbDepth)  // Packed pallete tile
+#define UPDATE_BUFFER_SIZE 1040
+#define UPDATE_MAX_TILES    7
 
-#if defined(VNC_FB_MONOCHROME)
-    #define TRLE_ROW_SIZE   (tilesPerRow * PLAIN_PACKED_TILE_SIZE)
-#elif defined(USE_NATIVE_COLOR_TILES)
-    #define TRLE_ROW_SIZE   ((tilesPerRow - 1) * PLAIN_PACKED_TILE_SIZE + PLAIN_RLE_MAX_TILE_SIZE)
+#define PLAIN_RLE_MAX_TILE_SIZE (1 + 512)
+#define PLAIN_PACKED_TILE_SIZE(DEPTH)  (1 + (1 << DEPTH) + 32 * DEPTH)  // Packed pallete tile
+
+#if defined(USE_RLE_COLOR_TILES)
+    #define TILE_MAX_SIZE   (PLAIN_RLE_MAX_TILE_SIZE)
 #else
-    #define TRLE_ROW_SIZE   (tilesPerRow * PLAIN_RLE_MAX_TILE_SIZE)
+    #define TILE_MAX_SIZE   (PLAIN_PACKED_TILE_SIZE(fbDepth))
 #endif
 
 OSErr VNCEncoder::setup() {
@@ -106,7 +91,11 @@ OSErr VNCEncoder::setup() {
     #else
         const unsigned long tilesPerRow = fbWidth / 16;
     #endif
-    fbUpdateBuffer = (unsigned char*) NewPtr(TRLE_ROW_SIZE);
+    #ifdef USE_FAST_MONO_ENCODER
+        fbUpdateBuffer = (unsigned char*) NewPtr(tilesPerRow * PLAIN_PACKED_TILE_SIZE(1));
+    #else
+        fbUpdateBuffer = (unsigned char*) NewPtr(UPDATE_BUFFER_SIZE);
+    #endif
     if (MemError() != noErr)
         return MemError();
     return noErr;
@@ -119,20 +108,10 @@ OSErr VNCEncoder::destroy() {
 }
 
 void VNCEncoder::begin() {
+    tile_x = 0;
     tile_y = 0;
     lastPaletteSize = 0;
 }
-
-#ifdef USE_EXPERIMENTAL_ENCODER
-    asm unsigned short encodeTileExperimental(
-        const unsigned char *src,
-        unsigned char *dst,
-        unsigned char *buffer,
-        char rows
-    ) {
-        #include "VNCEncodeTRLE.asm"
-    }
-#endif
 
 #if !defined(VNC_FB_MONOCHROME)
         /**
@@ -142,8 +121,8 @@ void VNCEncoder::begin() {
          *
          * This function will use the correct depth and linestride for the device.
          */
-        static asm unsigned short encodeTilePlainRLE(const unsigned char *src, unsigned char *dst, unsigned char* end, char rows
-            #ifdef FIRST_PASS_COLOR_COUNT
+        static asm unsigned short encodeTilePlainRLE(const unsigned char *src, unsigned char *dst, const unsigned char* end, char rows
+            #ifdef RLE_GATHERS_PALETTE
                 ,unsigned char palette[5]
             #endif
         ) {
@@ -219,7 +198,7 @@ void VNCEncoder::begin() {
             clr.l offset
             clr.w pixVal
 
-            #ifdef FIRST_PASS_COLOR_COUNT
+            #ifdef RLE_GATHERS_PALETTE
                 clr.l rleAlt
                 clr.l rleVal
             #endif
@@ -227,7 +206,7 @@ void VNCEncoder::begin() {
             bfextu (src) {0:depth},rleVal  // Load 1st pixel
             move.b #-1,rleCnt              // Initialize count to -1
 
-            #ifdef FIRST_PASS_COLOR_COUNT
+            #ifdef RLE_GATHERS_PALETTE
                 bset #31,rleVal             // Mark as occupied
                 move.b rleVal, (palette)+   // Set first five palette
                 move.b rleVal,0(palette)    // ...values to be the same
@@ -274,10 +253,7 @@ void VNCEncoder::begin() {
                 beq earlyAbort
             #endif
         noWriteRun:
-            clr.b rleCnt                // ...and set RLE count to 0, indicating one pixel
-            #ifndef FIRST_PASS_COLOR_COUNT
-                move.b pixVal,rleVal    // Set RLE value to current pixel
-            #else
+            #ifdef RLE_GATHERS_PALETTE
                 // If palette is zero, skip the search
                     cmpa.w #0,palette
                 #ifdef USE_RLE_EARLY_ABORT
@@ -285,7 +261,7 @@ void VNCEncoder::begin() {
                 #else
                     beq pixFound
                 #endif
-                #ifdef USE_4_COLOR_TILES
+                #if defined(USE_4_COLOR_TILES) || defined(USE_16_COLOR_TILES)
                     // We have a pixel value that does not match the low byte
                     // of rleVal, but we also check the three previously seen
                     // pixel values, which are stored in the other register
@@ -335,10 +311,11 @@ void VNCEncoder::begin() {
                     noFreeSlots:
                         move.b pixVal,(palette)+    // ...write out the color
                         suba.l palette,palette      // Clear palette so we skip the search
-                #endif
-                pixFound:
-                    move.b pixVal,rleVal
-            #endif
+                #endif // USE_4_COLOR_TILES
+            #endif // RLE_GATHERS_PALETTE
+        pixFound:
+            move.b pixVal,rleVal        // Set RLE value to current pixel
+            clr.b rleCnt                // ...and set RLE count to 0, indicating one pixel
             bra nextPixel
 
         tileFinished:
@@ -406,7 +383,7 @@ void VNCEncoder::begin() {
          * will count the number of colors in a tile up to 17. The unique colors are written starting in "dst"
          *
          * For efficiency, this function uses eight CPU registers as a 256 bit field for tallying colors, but
-         * it requires a reread pass of the RLE encoded data. For this reason, when FIRST_PASS_COLOR_COUNT is set,
+         * it requires a reread pass of the RLE encoded data. For this reason, when RLE_GATHERS_PALETTE is set,
          * "encodeTilePlainRLE" will count up to four colors during that 1st pass.
          */
         static asm unsigned short countRLEColors(const unsigned char *src, unsigned char *dst, unsigned int size) {
@@ -1283,20 +1260,15 @@ void VNCEncoder::begin() {
         }
 
         static unsigned short encodeTile(const unsigned char *src, unsigned char *dst, char rows) {
-            int len = 0;
-    #ifdef USE_EXPERIMENTAL_ENCODER
-        unsigned char buffer[512];
-        len = encodeTileIntegrated(src, dst, buffer, rows);
-    #else
-            #ifdef VNC_FB_BITS_PER_PIX
-                const unsigned long fbDepth = VNC_FB_BITS_PER_PIX;
-            #endif
-            #ifdef FIRST_PASS_COLOR_COUNT
-                unsigned char palette[17];
+            int len = 1024;
+            #ifdef USE_RLE_COLOR_TILES
+                #ifdef VNC_FB_BITS_PER_PIX
+                    const unsigned long fbDepth = VNC_FB_BITS_PER_PIX;
+                #endif
                 #ifdef USE_RLE_EARLY_ABORT
                     // When USE_RLE_EARLY_ABORT is defined, set the maximum number of bytes to
                     // write for an RLE tile to the size of the equivalent paletted or raw tile
-                    unsigned char *end = dst +
+                    const unsigned char *end = dst +
                     #if defined(VNC_FB_256_COLORS)
                         259;
                     #elif defined(VNC_FB_16_COLORS)
@@ -1308,64 +1280,57 @@ void VNCEncoder::begin() {
                     #else
                         3 + 32 * fbDepth + ((fbDepth != 8) ? (1 << fbDepth) : 0);
                     #endif
-
-                    len = encodeTilePlainRLE(src, dst, end, rows, palette);
                 #else
-                    len = encodeTilePlainRLE(src, dst, 0, rows, palette);
+                    const unsigned char *end = 0;
                 #endif
-                const unsigned char tileColors =
-                    (palette[0] != palette[4]) ? 5 : // Tile has greater than 4 colors
-                    (palette[0] != palette[3]) ? 4 : // Tile has four colors
-                    (palette[0] != palette[2]) ? 3 : // Tile has three colors
-                    (palette[0] != palette[1]) ? 2 : // Tile has two colors
-                                                 1;  // Tile is solid
-
-                /*if(src == VNCFrameBuffer::getPixelAddr(64,160)) {
-                    printf("l:%d,c:%d,p:%d,%d,%d,%d,%d,%d\n", len, tileColors,
-                        //palette[0], palette[1], palette[2], palette[3], palette[4],palette[5]
-                        src[0],src[1],src[2],src[3],src[4],src[5]
-);
-                    //len = encodeTileSolid(dst, palette[0]);
-                }*/
-
-                switch(tileColors) {
-                    case 5:
-                        #if defined(USE_16_COLOR_TILES)
-                            if(fbDepth == 4) break; // Use a native tile instead
-                            if((len > 145) && (len != (end - dst))) {
-                                const int nColors = countRLEColors(dst, palette, len);
-                                if(nColors <= 16 && len > 129 + nColors) {
-                                    len = encodeTileSixteenColor(src, dst, len, rows, palette);
+                #ifndef RLE_GATHERS_PALETTE
+                    len = encodeTilePlainRLE(src, dst, end, rows);
+                #else
+                    unsigned char palette[17];
+                    len = encodeTilePlainRLE(src, dst, end, rows, palette);
+                    const unsigned char tileColors =
+                        (palette[0] != palette[4]) ? 5 : // Tile has greater than 4 colors
+                        (palette[0] != palette[3]) ? 4 : // Tile has four colors
+                        (palette[0] != palette[2]) ? 3 : // Tile has three colors
+                        (palette[0] != palette[1]) ? 2 : // Tile has two colors
+                                                     1;  // Tile is solid
+                    switch(tileColors) {
+                        case 5:
+                            #if defined(USE_16_COLOR_TILES)
+                                if(fbDepth == 4) break; // Use a native tile instead
+                                if((len > 145) && (len != (end - dst))) {
+                                    const int nColors = countRLEColors(dst, palette, len);
+                                    if(nColors <= 16 && len > 129 + nColors) {
+                                        len = encodeTileSixteenColor(src, dst, len, rows, palette);
+                                    }
                                 }
+                            #endif
+                            break;
+                        case 3:
+                        case 4:
+                            #if defined(USE_4_COLOR_TILES)
+                                if(fbDepth == 2) break; // Use a native tile instead
+                                if(len > 68) {
+                                    len = encodeTileFourColor(src, dst, len, rows, palette);
+                                }
+                            #endif
+                            break;
+                        case 2:
+                            #if defined(USE_2_COLOR_TILES)
+                                if(fbDepth == 1) break; // Use a native tile instead
+                                if(len > 35) {
+                                    len = encodeTileTwoColor(src, dst, len, rows, palette);
+                                }
+                            #endif
+                            break;
+                        case 1:
+                            if(len > 2) {
+                                len = encodeTileSolid(dst, palette[0]);
                             }
-                        #endif
-                        break;
-                    case 3:
-                    case 4:
-                        #if defined(USE_4_COLOR_TILES)
-                            if(fbDepth == 2) break; // Use a native tile instead
-                            if(len > 68) {
-                                len = encodeTileFourColor(src, dst, len, rows, palette);
-                            }
-                        #endif
-                        break;
-                    case 2:
-                        #if defined(USE_2_COLOR_TILES)
-                            if(fbDepth == 1) break; // Use a native tile instead
-                            if(len > 35) {
-                                len = encodeTileTwoColor(src, dst, len, rows, palette);
-                            }
-                        #endif
-                        break;
-                    case 1:
-                        if(len > 2) {
-                            len = encodeTileSolid(dst, palette[0]);
-                        }
-                        break;
-                }
-            #else
-                len = encodeTilePlainRLE(src, dst, 0, rows);
-            #endif
+                            break;
+                    }
+                #endif // RLE_GATHERS_PALETTE
+            #endif // USE_RLE_COLOR_TILES
             #if defined(USE_NATIVE_COLOR_TILES)
                 if((fbDepth == 4) && (len > 145)) {
                     len = encodeTileSixteenColor(src, dst, len, rows, 0);
@@ -1382,7 +1347,6 @@ void VNCEncoder::begin() {
                     len = encodeTileRaw(src, dst, len, rows);
                 }
             #endif
-    #endif
             #ifdef DEBUG_TILE_TYPES
                 unsigned char type = dst[0];
                 if(type == 127) {
@@ -1415,56 +1379,38 @@ void VNCEncoder::begin() {
             #ifdef USE_FAST_MONO_ENCODER
                 if(fbDepth == 1) return getChunkMonochrome(x,y,w,h,wds);
             #endif
-            unsigned char *dst = fbUpdateBuffer;
-            unsigned char *src = VNCFrameBuffer::getPixelAddr(x, y + tile_y);
-            unsigned char tiles = w / 16;
-            const char rows = min(16, h - tile_y);
-            while(tiles--) {
+
+            unsigned char *dst = fbUpdateBuffer, *src, rows, tiles = UPDATE_MAX_TILES;
+
+            goto beginLoop;
+
+            while(tiles-- && (dst - fbUpdateBuffer <= (UPDATE_BUFFER_SIZE - TILE_MAX_SIZE))) {
                 dst += encodeTile(src, dst, rows);
+
+                // Advance to next tile in row
                 #ifdef VNC_FB_BITS_PER_PIX
                     src += BYTES_PER_TILE_ROW;
                 #else
                     src += 2 * fbDepth;
                 #endif
+                tile_x += 16;
+                if (tile_x < w)
+                    continue;
+
+                // Prepare for the next row
+                tile_y += 16;
+                if (tile_y >= h)
+                    break;
+                tile_x = 0;
+
+            beginLoop:
+                rows = min(16, h - tile_y);
+                src = VNCFrameBuffer::getPixelAddr(x + tile_x, y + tile_y);
             }
 
             wds->length = dst - fbUpdateBuffer;
             wds->ptr = (Ptr) fbUpdateBuffer;
 
-            // Prepare for the next row
-            tile_y += 16;
-
             return tile_y < h;
         }
-#endif
-
-#if 0
-void testEncoder() {
-    unsigned int oldStride = fbStride;
-    fbStride = 16;
-    unsigned char tile[256];
-    unsigned char output[512+3];
-    unsigned char palette[7] = {0};
-    memset(tile,0,256);
-    #if 0
-        tile[0] = 255;
-        tile[1] = 250;
-        tile[2] = 248;
-        tile[3] = 249;
-        tile[4] = 255;
-        tile[5] = 10;
-        tile[6] = 11;
-    #else
-        tile[0] = 255;
-        tile[1] = 250;
-        tile[2] = 248;
-        tile[3] = 4;
-        tile[4] = 5;
-        tile[5] = 6;
-        tile[6] = 7;
-    #endif
-    unsigned short len = encodeTilePlainRLE(tile, output, output + 1000, 16, palette);
-    printf("%d,%d,%d,%d,%d,%d,%d\n", palette[0], palette[1], palette[2], palette[3], palette[4],palette[5],palette[6]);
-    fbStride = oldStride;
-}
 #endif

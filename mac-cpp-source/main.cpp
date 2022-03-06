@@ -41,7 +41,8 @@ enum {
 Boolean gCancel = false;    /* this is set to true if the user cancels an operation */
 DialogPtr gDialog;
 
-int ShowStatus(const char* format, ...);
+void ShowStatus(const char* format, ...);
+void SetDialogTitle(const char* format, ...);
 Boolean DoEvent(EventRecord *event);
 ControlHandle FindCHndl(int item, short *type = NULL);
 
@@ -59,6 +60,11 @@ main() {
 
     /* Create the new dialog */
     gDialog = GetNewDialog(128, NULL, (WindowPtr) -1);
+    #if defined(VNC_FB_MONOCHROME)
+        SetDialogTitle("%s (B&W)", __DATE__);
+    #else
+        SetDialogTitle("%s (Pack %d)", __DATE__, COMPRESSION_LEVEL);
+    #endif
 
     if(VNCFrameBuffer::checkScreenResolution())
         ShowStatus("Click \"Start Server\" to begin.");
@@ -189,15 +195,24 @@ ControlHandle FindCHndl(int item, short *type) {
     return hCntl;
 }
 
-int ShowStatus(const char* format, ...) {
+void ShowStatus(const char* format, ...) {
     Str255 pStr;
     va_list argptr;
     va_start(argptr, format);
     vsprintf((char*)pStr + 1, format, argptr);
     va_end(argptr);
-    short len = strlen((char*)pStr + 1);
-    if(pStr[len] == '\n') len--;
-    pStr[0] = len;
+    const short len = strlen((char*)pStr + 1);
+    pStr[0] = pStr[len] == '\n' ? len - 1 : len;
     SetDText(gDialog, iStatus, pStr);
-    return 0;
+}
+
+void SetDialogTitle(const char* format, ...) {
+    Str255 pStr;
+    va_list argptr;
+    va_start(argptr, format);
+    vsprintf((char*)pStr + 1, format, argptr);
+    va_end(argptr);
+    const short len = strlen((char*)pStr + 1);
+    pStr[0] = pStr[len] == '\n' ? len - 1 : len;
+    SetWTitle(gDialog, pStr);
 }
