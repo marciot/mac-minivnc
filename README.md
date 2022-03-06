@@ -1,6 +1,4 @@
-[![MiniVNC for Macintosh](https://github.com/marciot/mac-minivnc/raw/main/images/youtube2.png)](https://youtu.be/_o8JiXqFHsk)
-
-[Video 1](https://youtu.be/zM_sNItbuhc) [Video 2](https://youtu.be/_o8JiXqFHsk)
+![MiniVNC for Macintosh][mac-screenshot]
 
 MiniVNC Remote Desktop Server for Vintage Macintosh Computers
 =============================================================
@@ -11,6 +9,11 @@ ground up for best performance on 68k Macintosh computers.
 It was originally an experiment to see whether a Macintosh Plus could
 be controlled remotely, but has since been expanded to support color
 on all vintage color Macs! :rainbow:
+
+[![MiniVNC on a Macintosh LC II](https://github.com/marciot/mac-minivnc/raw/main/images/youtube2.png)](https://youtu.be/_o8JiXqFHsk)
+
+- [Video 1](https://youtu.be/zM_sNItbuhc) - Running on a Macintosh Plus in B&W
+- [Video 2](https://youtu.be/_o8JiXqFHsk) - Running on a Macintosh LC II in Color
 
 Compatibility
 -------------
@@ -52,6 +55,7 @@ performance.
 [Remote Framebuffer Protocol]: https://datatracker.ietf.org/doc/html/rfc6143
 [RaSCSI device]: https://github.com/akuker/RASCSI
 [GitHub sponsor]: https://github.com/sponsors/marciot
+[mac-screenshot]: https://github.com/marciot/mac-minivnc/raw/main/images/screenshot.png "MiniVNC Screenshot"
 
 Technical Notes
 ---------------
