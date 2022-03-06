@@ -1,4 +1,6 @@
-[![MiniVNC for Macintosh](https://github.com/marciot/mac-minivnc/raw/main/images/youtube.png)](https://www.youtube.com/watch?v=zM_sNItbuhc)
+[![MiniVNC for Macintosh](https://github.com/marciot/mac-minivnc/raw/main/images/youtube2.png)](https://youtu.be/_o8JiXqFHsk)
+
+[Video 1](https://youtu.be/zM_sNItbuhc) [Video 2](https://youtu.be/_o8JiXqFHsk)
 
 MiniVNC Remote Desktop Server for Vintage Macintosh Computers
 =============================================================
