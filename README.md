@@ -4,9 +4,10 @@ MiniVNC Remote Desktop Server for Vintage Macintosh Computers
 =============================================================
 
 MiniVNC is a remote desktop server that has been written from the
-ground up for best performance on 68k Macintosh computers. It was
-originally an experiment to see whether a Macintosh Plus could be
-controlled remotely, but has since been expanded to support color
+ground up for best performance on 68k Macintosh computers.
+
+It was originally an experiment to see whether a Macintosh Plus could
+be controlled remotely, but has since been expanded to support color
 on all vintage color Macs!
 
 Compatibility
@@ -14,8 +15,8 @@ Compatibility
 
 MiniVNC is built on MacTCP and requires System 7, but it will
 operate on later Macs using Open Transport. MiniVNC has been
-developed and tested using a RaSCSI device operating as an
-Ethernet bridge, but also works using a Mac with a built-in
+developed and tested using a [RaSCSI device] operating as an
+Ethernet bridge, but should also work using a Mac with a built-in
 Ethernet port.
 
 How can you help?
@@ -23,9 +24,9 @@ How can you help?
 
 You can help this project in one of the following ways:
 
-* Star this project on GitHub to show your support!
-* Sign up to [beta testing in the discussion forum]!
-* Become a GitHub sponsor to help fund my various open-source projects!
+* :sparkles: Star this project on GitHub to show your support!
+* :raising_hand: Sign up to [beta testing in the discussion forum]!
+* :green_heart: Become a GitHub sponsor to help fund my open-source projects!
 
 Project Goal
 ------------
@@ -39,21 +40,22 @@ It accomplishes these goals by:
 - Implementing a limited subset of the [Remote Framebuffer Protocol],
 which favor of performance over full compatibility with all clients.
 - Implements fast but inexact screen change detection, favoring
-performance and low memory use while allowing for the occasional
-missed updates and visual artifacts.
-- Written in C++, with optimized 68x assembly code where necessary
-to achieve best performance.
+performance and low memory utilization while allowing for the occasional
+missed update and visual artifacts.
+- Written in C++, with optimized 68x assembly code where necessary for best
+performance.
 
 [MacTCP]: https://en.wikipedia.org/wiki/MacTCP
 [ChromiVNC]: https://web.archive.org/web/20070208223046/http://www.chromatix.uklinux.net/vnc/index.html
 [Remote Framebuffer Protocol]: https://datatracker.ietf.org/doc/html/rfc6143
+[RaSCSI device]: https://github.com/akuker/RASCSI
 
 Technical Notes
 ---------------
 
-Development of MiniVNC required months of experimentation and
-hacking. The following write-up provides details for developers who have
-an interest.
+Development of MiniVNC required months of experimentation and hacking.
+The following write-up provides details for developers who have an
+interest.
 
 <details>
 <summary>
@@ -107,9 +109,8 @@ rectangle as the location of the first and last changed sum along an axis
 can be taken as the rectangle bounds along the axis.
 
 This is an inexact approach which makes the server blind to many types of
-screen changes. Accuracy could be improved somewhat by using a positional
-checksum like a [Fletcher's checksum], at the expense of more computation
-and storage.
+screen changes. Using a [position-dependent checksum] like a [Fletcher's checksum]
+would improve accuracy, at the expense of more computation and storage.
 
 #### Byte Alignment and Reduction of Horizontal Resolution of Change Rectangles
 
@@ -190,8 +191,8 @@ tile is emitted.
 The TRLE encoder was written in 68x assembly for best performance.
 For the color encoders, a 68020 is assumed and the code makes special
 use of 68020 instructions such as `bfextu`. Most functions take
-advantage of as many of available the eight data and eight address
-registers as possible, as to minimize memory access.
+advantage of as many of the available eight data and eight address
+registers as possible, as to minimize memory accesses.
 
 </details>
 
