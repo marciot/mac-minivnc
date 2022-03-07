@@ -30,8 +30,12 @@ How can you help?
 You can help this project in one of the following ways:
 
 * :sparkles: Star this project on GitHub to show your support!
-* :raising_hand: Sign up to [beta testing in the discussion forum]!
+* :raising_hand: Download the binaries from the [releases page] and participate in the [beta test] discussion!
 * :green_heart: Become a [GitHub sponsor] to help fund my open-source projects!
+
+[beta test]: https://github.com/marciot/mac-minivnc/discussions/1
+[releases page]: https://github.com/marciot/mac-minivnc/releases
+[GitHub sponsor]: https://github.com/sponsors/marciot
 
 Project Goal
 ------------
@@ -54,7 +58,6 @@ performance.
 [ChromiVNC]: https://web.archive.org/web/20070208223046/http://www.chromatix.uklinux.net/vnc/index.html
 [Remote Framebuffer Protocol]: https://datatracker.ietf.org/doc/html/rfc6143
 [RaSCSI device]: https://github.com/akuker/RASCSI
-[GitHub sponsor]: https://github.com/sponsors/marciot
 [mac-screenshot]: https://github.com/marciot/mac-minivnc/raw/main/images/screenshot.png "MiniVNC Screenshot"
 
 More Software for Vintage Macs
@@ -316,4 +319,3 @@ effort).
 </details>
 
 [Fletcher's checksum]: https://en.wikipedia.org/wiki/Fletcher%27s_checksum
-[beta testing in the discussion forum]: https://github.com/marciot/mac-minivnc/discussions/1
