@@ -239,7 +239,7 @@ tile types:
 - Raw 8-bit tiles
 - RLE encoded tiles
 
-On a color Mac, the encoding process works like this:
+On a color Mac, the full encoding process would work like this:
 
 1. The tile is encoded as a plain RLE tile. During this stage,
 up to five unique colors from the tile are recorded.
@@ -255,13 +255,61 @@ tile, then a 2-bit paletted tile is emitted
 the RLE encoded tile exceeds that of a raw 8-bit tile, a raw 8-bit
 tile is emitted.
 
-#### Performance and Assembly Language Tricks
+In practice, I found that doing this whole process actually hurt
+performance on an Macintosh LC II, so MiniVNC supports different
+packing levels which omit many of the steps listed above.
+
+For example, packing level 2 looks like this:
+
+1. The tile is encoded as a plain RLE tile.
+2. A solid tile is emitted if only one run is found.
+3. If the RLE encoded tile exceeds the size of a paletted tile
+of the same color depth as the screen, emit that tile instead.
+  
+The key different between packing 2 and the full process is that
+I do not emit a tile with fewer colors than the color depth of the
+screen itself. Doing so requires finding the unique colors in
+a tile and mapping those to a smaller palette, which is expensive.
+Emitting a tile with the *same* number of colors as the screen,
+however, is trivial as involves a straight copy with no mapping.
+
+#### CodeWarrior or Symantec C++
+
+There is not, unfortunately, a perfect development environment for
+the Macintosh when it comes to writing code that mixes C++ and
+assembly language. My go to language used to be Symantec C++ 7
+because it allows you to write C++ routines and add assembly
+language bits and pieces just where you need it, minimizing the
+learning curve. It is also very good for things like code resources
+or device drivers.
+  
+CodeWarrior 8, on the other hand, works great on Basillisk II and
+has a better IDE. I've lately begun using it over Symantec C++ 7
+for these reasons, but one frustrating aspect is that it does not
+allow you to mix C and assembly language in one function. Instead,
+you must chose one or the other. This meant that in MiniVNC I had
+to write whole functions in assembly language, which meant doing
+things like pulling arguments off the stack myself, something
+Symantec C++ 7 would do for me.
+
+#### Assembly Language Tricks for Performance
 
 The TRLE encoder was written in 68x assembly for best performance.
 For the color encoders, a 68020 is assumed and the code makes special
 use of 68020 instructions such as `bfextu`. Most functions take
 advantage of as many of the available eight data and eight address
 registers as possible, as to minimize memory accesses.
+
+One example is the color palette gathering code. In the RLE encoding
+routine, use two register halves of two registers to keep track of
+colors I have seen before, which allows me to generate a palette of
+up to four colors without having to write to memory. I implemented
+another routine which uses eight registers as bitfields to tally up
+to 256 unique colors&mdash;again, with no memory access. This routine
+would be needed for generating 16 bit color tiles while in 256 color
+mode, although I have not actually done this at this point (and
+probably will not do it, as it appears that even generating 4 color
+tiles is to slow to be worth the effort).
 
 </details>
 
