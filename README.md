@@ -57,6 +57,17 @@ performance.
 [GitHub sponsor]: https://github.com/sponsors/marciot
 [mac-screenshot]: https://github.com/marciot/mac-minivnc/raw/main/images/screenshot.png "MiniVNC Screenshot"
 
+More Software for Vintage Macs
+------------------------------
+
+* [Trouble in Paradise for Macintosh]: An Iomega Zip and Jaz cartridge tester for vintage Macs! 
+* [ScreenChooser]: A dynamic background changer for vintage Macs!
+* [Retroweb Vintage Computer Museum]: A web-based museum of vintage computers, including the Macintosh!
+
+[ScreenChooser]: https://archive.org/details/screen-chooser
+[Trouble in Paradise for Macintosh]: https://github.com/marciot/mac-tip
+[Retroweb Vintage Computer Museum]: http://retroweb.maclab.org
+
 Technical Notes
 ---------------
 
