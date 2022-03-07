@@ -305,12 +305,13 @@ One example is the color palette gathering code. In the RLE encoding
 routine, use two register halves of two registers to keep track of
 colors I have seen before, which allows me to generate a palette of
 up to four colors without having to write to memory. I implemented
-another routine which uses eight registers as bitfields to tally up
-to 256 unique colors&mdash;again, with no memory access. This routine
-would be needed for generating 16 bit color tiles while in 256 color
-mode, although I have not actually done this at this point (and
-probably will not do it, as it appears that even generating 4 color
-tiles is to slow to be worth the effort).
+another routine which uses eight 32-bit registers as bitfields to
+tally up to 256 unique colors&mdash;again, with no memory access.
+This routine would be needed for generating 16 bit color tiles
+when the screen is in 256 color mode, although I have not actually
+implemented this at this point (and probably never will, as it appears
+that even generating 2 or 4 color tiles is too slow to be worth the
+effort).
 
 </details>
 
