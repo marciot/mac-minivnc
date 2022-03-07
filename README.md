@@ -271,7 +271,8 @@ I do not emit a tile with fewer colors than the color depth of the
 screen itself. Doing so requires finding the unique colors in
 a tile and mapping those to a smaller palette, which is expensive.
 Emitting a tile with the *same* number of colors as the screen,
-however, is trivial as involves a straight copy with no mapping.
+however, is trivial as it only involves a straight copy with no
+changes to the color values themselves.
 
 #### CodeWarrior or Symantec C++
 
