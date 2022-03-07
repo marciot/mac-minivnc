@@ -30,12 +30,14 @@ How can you help?
 You can help this project in one of the following ways:
 
 * :sparkles: Star this project on GitHub to show your support!
+* :loudspeaker: Subscribe to my [YouTube channel]!
 * :raising_hand: Download the binaries from the [releases page] and participate in the [beta test] discussion!
-* :green_heart: Become a [GitHub sponsor] to help fund my open-source projects!
+* :heart: Become a [GitHub sponsor] to help fund my open-source projects!
 
 [beta test]: https://github.com/marciot/mac-minivnc/discussions/1
 [releases page]: https://github.com/marciot/mac-minivnc/releases
 [GitHub sponsor]: https://github.com/sponsors/marciot
+[YouTube channel]: https://www.youtube.com/channel/UC1tZ8uA0WJp5pDpPwldQ0Ig
 
 Project Goal
 ------------
