@@ -106,20 +106,24 @@ March 1993 which involves an assembly language glue routine. Later on,
 I used a similar routine for making a Vertical Retrace task for gathering
 screen updates.
 
-Today take for granted threads which make it easy to implement network
-applications. The use of callback routines is definitely a huge hassle.
+Today we take for granted threads which make it easy to implement
+network applications. The use of callback routines is a huge step
+backwards.
+
 For one, it precludes using temporary stack-based storage and instead
-all state must be stored in global variables. Doing things like loops,
-which are easily handled in a thread, is very difficult using callback
-routines. The VNC protocol is fairly simple, but the code is far more
+all state must be stored in global variables. Doing things like loops
+are trivial in a thread but very difficult using callback routines.
+  
+The VNC protocol is fairly simple, but the code is far more
 complicated than it would have been had I modern techniques at my
 disposal.
 
 As an aside, Ari Halberstadt wrote a very promissing [thread library]
 for the Macintosh. Getting it to work with MacTCP might have simplified
 the programing model, but at the time it was too much of a heavy lift
-to get it to work. I ended up using some of his basic OS utilities code
-in MiniVNC, but not the thread library itself.
+for me to get it to work while I was also learning MacTCP. I ended up
+using some of his basic OS utilities code in MiniVNC, but not the thread
+library itself.
 
 [MacTCP Programmer's Guide]: https://github.com/marciot/mac-minivnc/raw/main/docs/MacTCP_programming.pdf
 [MacTCP Cookbook]: http://preserve.mactech.com/articles/develop/issue_06/p46-69_Falkenburg_text_.html
