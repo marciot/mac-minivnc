@@ -79,6 +79,53 @@ interest.
 <summary>
 Click here to read this section
 </summary><br>
+  
+#### MacTCP Programming is Hard; Doing it Efficiently is Harder
+  
+MacTCP is Apple's first TCP/IP networking stack and is the only
+networking API available on the Macintosh Plus. The
+[MacTCP Programmer's Guide] is a good resource, but lacks code
+samples and makes no mention of high-level languages. The
+[MacTCP Cookbook] article by Steve Falkenburg provides more meat
+to chew on but actual source code is worth a thousand words. I
+finally it on the [Apple Developer Group CD Volume VII] in the
+form of a "finger" protocol example in the directory
+`Dev.CD Vol. VII:develop:develop 6 code:TCP:finger`
+
+This is a good starting point as the "TCPRoutines.c" file
+provides an example of using MacTCP parameter blocks from a
+high-level language. Steve's helper routines, while easy-to-use
+for simple tasks, are very slow. As I later learned, the most
+efficient way to do MacTCP programming is via asynchronous callback
+routines.
+
+Since these callback routines execute in interrupt time, writing them
+in a high-level language is challenging. I used the technique from the
+article "Asynchronous Routines on the Macintosh" in [Develop magazine],
+March 1993 which involves an assembly language glue routine. Later on,
+I used a similar routine for making a Vertical Retrace task for gathering
+screen updates.
+
+Today take for granted threads which make it easy to implement network
+applications. The use of callback routines is definitely a huge hassle.
+For one, it precludes using temporary stack-based storage and instead
+all state must be stored in global variables. Doing things like loops,
+which are easily handled in a thread, is very difficult using callback
+routines. The VNC protocol is fairly simple, but the code is far more
+complicated than it would have been had I modern techniques at my
+disposal.
+
+As an aside, Ari Halberstadt wrote a very promissing [thread library]
+for the Macintosh. Getting it to work with MacTCP might have simplified
+the programing model, but at the time it was too much of a heavy lift
+to get it to work. I ended up using some of his basic OS utilities code
+in MiniVNC, but not the thread library itself.
+
+[MacTCP Programmer's Guide]: https://github.com/marciot/mac-minivnc/raw/main/docs/MacTCP_programming.pdf
+[MacTCP Cookbook]: http://preserve.mactech.com/articles/develop/issue_06/p46-69_Falkenburg_text_.html
+[Apple Developer Group CD Volume VII]: https://archive.org/details/apple-developer-group-cd-series-volume-vii-lord-of-the-files-1991-cd-rom
+[Develop magazine]: https://vintageapple.org/develop/
+[thread library]: https://web.archive.org/web/20211216043914/http://websites.umich.edu/~archive/mac/development/source/threadlib1.0d4.cpt.hqx
 
 #### Mouse Control
 
