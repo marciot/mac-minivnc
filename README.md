@@ -30,8 +30,14 @@ How can you help?
 You can help this project in one of the following ways:
 
 * :sparkles: Star this project on GitHub to show your support!
-* :raising_hand: Sign up to [beta testing in the discussion forum]!
-* :green_heart: Become a [GitHub sponsor] to help fund my open-source projects!
+* :loudspeaker: Subscribe to my [YouTube channel]!
+* :raising_hand: Download the binaries from the [releases page] and participate in the [beta test] discussion!
+* :heart: Become a [GitHub sponsor] to help fund my open-source projects!
+
+[beta test]: https://github.com/marciot/mac-minivnc/discussions/1
+[releases page]: https://github.com/marciot/mac-minivnc/releases
+[GitHub sponsor]: https://github.com/sponsors/marciot
+[YouTube channel]: https://www.youtube.com/channel/UC1tZ8uA0WJp5pDpPwldQ0Ig
 
 Project Goal
 ------------
@@ -54,7 +60,6 @@ performance.
 [ChromiVNC]: https://web.archive.org/web/20070208223046/http://www.chromatix.uklinux.net/vnc/index.html
 [Remote Framebuffer Protocol]: https://datatracker.ietf.org/doc/html/rfc6143
 [RaSCSI device]: https://github.com/akuker/RASCSI
-[GitHub sponsor]: https://github.com/sponsors/marciot
 [mac-screenshot]: https://github.com/marciot/mac-minivnc/raw/main/images/screenshot.png "MiniVNC Screenshot"
 
 More Software for Vintage Macs
@@ -106,20 +111,24 @@ March 1993 which involves an assembly language glue routine. Later on,
 I used a similar routine for making a Vertical Retrace task for gathering
 screen updates.
 
-Today take for granted threads which make it easy to implement network
-applications. The use of callback routines is definitely a huge hassle.
+Today we take for granted threads which make it easy to implement
+network applications. The use of callback routines is a huge step
+backwards.
+
 For one, it precludes using temporary stack-based storage and instead
-all state must be stored in global variables. Doing things like loops,
-which are easily handled in a thread, is very difficult using callback
-routines. The VNC protocol is fairly simple, but the code is far more
+all state must be stored in global variables. Doing things like loops
+are trivial in a thread but very difficult using callback routines.
+  
+The VNC protocol is fairly simple, but the code is far more
 complicated than it would have been had I modern techniques at my
 disposal.
 
 As an aside, Ari Halberstadt wrote a very promissing [thread library]
 for the Macintosh. Getting it to work with MacTCP might have simplified
 the programing model, but at the time it was too much of a heavy lift
-to get it to work. I ended up using some of his basic OS utilities code
-in MiniVNC, but not the thread library itself.
+for me to get it to work while I was also learning MacTCP. I ended up
+using some of his basic OS utilities code in MiniVNC, but not the thread
+library itself.
 
 [MacTCP Programmer's Guide]: https://github.com/marciot/mac-minivnc/raw/main/docs/MacTCP_programming.pdf
 [MacTCP Cookbook]: http://preserve.mactech.com/articles/develop/issue_06/p46-69_Falkenburg_text_.html
@@ -235,7 +244,7 @@ tile types:
 - Raw 8-bit tiles
 - RLE encoded tiles
 
-On a color Mac, the encoding process works like this:
+On a color Mac, the full encoding process would work like this:
 
 1. The tile is encoded as a plain RLE tile. During this stage,
 up to five unique colors from the tile are recorded.
@@ -251,7 +260,45 @@ tile, then a 2-bit paletted tile is emitted
 the RLE encoded tile exceeds that of a raw 8-bit tile, a raw 8-bit
 tile is emitted.
 
-#### Performance and Assembly Language Tricks
+In practice, I found that doing this whole process actually hurt
+performance on an Macintosh LC II, so MiniVNC supports different
+packing levels which omit many of the steps listed above.
+
+For example, packing level 2 looks like this:
+
+1. The tile is encoded as a plain RLE tile.
+2. A solid tile is emitted if only one run is found.
+3. If the RLE encoded tile exceeds the size of a paletted tile
+of the same color depth as the screen, emit that tile instead.
+  
+The key different between packing 2 and the full process is that
+I do not emit a tile with fewer colors than the color depth of the
+screen itself. Doing so requires finding the unique colors in
+a tile and mapping those to a smaller palette, which is expensive.
+Emitting a tile with the *same* number of colors as the screen,
+however, is trivial as it only involves a straight copy with no
+changes to the color values themselves.
+
+#### CodeWarrior or Symantec C++
+
+There is not, unfortunately, a perfect development environment for
+the Macintosh when it comes to writing code that mixes C++ and
+assembly language. My go to language used to be Symantec C++ 7
+because it allows you to write C++ routines and add assembly
+language bits and pieces just where you need it, minimizing the
+learning curve. It is also very good for things like code resources
+or device drivers.
+  
+CodeWarrior 8, on the other hand, works great on Basillisk II and
+has a better IDE. I've lately begun using it over Symantec C++ 7
+for these reasons, but one frustrating aspect is that it does not
+allow you to mix C and assembly language in one function. Instead,
+you must chose one or the other. This meant that in MiniVNC I had
+to write whole functions in assembly language, which meant doing
+things like pulling arguments off the stack myself, something
+Symantec C++ 7 would do for me.
+
+#### Assembly Language Tricks for Performance
 
 The TRLE encoder was written in 68x assembly for best performance.
 For the color encoders, a 68020 is assumed and the code makes special
@@ -259,7 +306,18 @@ use of 68020 instructions such as `bfextu`. Most functions take
 advantage of as many of the available eight data and eight address
 registers as possible, as to minimize memory accesses.
 
+One example is the color palette gathering code. In the RLE encoding
+routine, use two register halves of two registers to keep track of
+colors I have seen before, which allows me to generate a palette of
+up to four colors without having to write to memory. I implemented
+another routine which uses eight 32-bit registers as bitfields to
+tally up to 256 unique colors&mdash;again, with no memory access.
+This routine would be needed for generating 16 bit color tiles
+when the screen is in 256 color mode, although I have not actually
+implemented this at this point (and probably never will, as it appears
+that even generating 2 or 4 color tiles is too slow to be worth the
+effort).
+
 </details>
 
 [Fletcher's checksum]: https://en.wikipedia.org/wiki/Fletcher%27s_checksum
-[beta testing in the discussion forum]: https://github.com/marciot/mac-minivnc/discussions/1
