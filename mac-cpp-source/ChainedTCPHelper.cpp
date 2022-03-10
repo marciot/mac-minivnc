@@ -17,7 +17,6 @@
 
 #include "ChainedTCPHelper.h"
 
-
 /* Opens the TCP driver and allocates a parameter block for
  * subsequent calls.
  */

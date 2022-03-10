@@ -19,9 +19,10 @@
 #include <string.h>
 #include <QDOffscreen.h>
 
+#include "GestaltUtils.h"
+#include "VNCServer.h"
 #include "VNCTypes.h"
 #include "VNCFrameBuffer.h"
-#include "VNCServer.h"
 
 #ifndef USE_STDOUT
     #define printf ShowStatus
@@ -50,40 +51,42 @@ unsigned long ctSeed = 10;
 //unsigned long LMGetDeskHook() {return * (unsigned long*) 0xA6C;}
 
 OSErr VNCFrameBuffer::setup() {
+    if(checkScreenResolution()) {
+        vncBits.baseAddr = (Ptr) ScrnBase;
+    }
+    #if defined(VNC_FB_MONOCHROME)
+        else {
+            // We are on a color Mac, create a virtual B&W map
+            vncBits.rowBytes = VNC_FB_WIDTH/8;
+            vncBits.baseAddr = NewPtr((unsigned long)VNC_FB_WIDTH/8 * VNC_FB_HEIGHT);
+            SetRect(&vncBits.bounds, 0, 0, VNC_FB_WIDTH, VNC_FB_HEIGHT);
+            OSErr err = MemError();
+            if (err != noErr)
+                return err;
+        }
+    #endif
+
     // Create the color palette
     #ifdef VNC_FB_BITS_PER_PIX
         const unsigned char fbDepth = VNC_FB_BITS_PER_PIX;
     #endif
+
     const unsigned int paletteSize = 1 << fbDepth;
     ctColors = (VNCColor*) NewPtr(sizeof(VNCColor) * paletteSize);
     if (MemError() != noErr)
         return MemError();
 
-    #if defined(VNC_FB_MONOCHROME)
+    if(fbDepth == 1) {
+        // Set up the monochrome palette
         ctColors[0].red   = -1;
         ctColors[0].green = -1;
         ctColors[0].blue  = -1;
         ctColors[1].red   = 0;
         ctColors[1].green = 0;
         ctColors[1].blue  = 0;
-    #endif
-
-    if(checkScreenResolution()) {
-        vncBits.baseAddr = (Ptr) ScrnBase;
     }
-    #if defined(VNC_FB_MONOCHROME)
-    else {
-        // We are on a color Mac, create a virtual B&W map
-        vncBits.rowBytes = VNC_FB_WIDTH/8;
-        vncBits.baseAddr = NewPtr((unsigned long)VNC_FB_WIDTH/8 * VNC_FB_HEIGHT);
-        SetRect(&vncBits.bounds, 0, 0, VNC_FB_WIDTH, VNC_FB_HEIGHT);
-        OSErr err = MemError();
-        if (err != noErr)
-            return err;
-    }
-    #endif
 
-    if(hasColorQuickdraw()) {
+    if(HasColorQD()) {
         //LMSetDeskHook(NULL);
         // Set a solid background
         //deskPat = GetPixPat(128);
@@ -105,17 +108,11 @@ OSErr VNCFrameBuffer::destroy() {
     if(ctColors) {
         DisposePtr((Ptr)ctColors);
     }
-    if(hasColorQuickdraw()) {
+    if(hasColorQD) {
         //SetDeskCPat(NULL);
         //DisposePixPat(deskPat);
     }
     return noErr;
-}
-
-Boolean VNCFrameBuffer::hasColorQuickdraw() {
-    long attr;
-    OSErr err = Gestalt(gestaltQuickdrawVersion, &attr);
-    return attr >= gestalt8BitQD;
 }
 
 Boolean VNCFrameBuffer::checkScreenResolution() {
@@ -128,7 +125,7 @@ Boolean VNCFrameBuffer::checkScreenResolution() {
 
     // Update values if this machine has Color QuickDraw
 
-    if(hasColorQuickdraw()) {
+    if(HasColorQD()) {
         GDPtr gdp = *GetMainDevice();
         PixMapPtr gpx = *(gdp->gdPMap);
 
@@ -177,22 +174,24 @@ void VNCFrameBuffer::copy() {
             CopyBits(&qd.screenBits, &vncBits, &vncBits.bounds, &vncBits.bounds, srcCopy, NULL);
         }
     #else
-        #ifdef VNC_FB_BITS_PER_PIX
-            const unsigned char fbDepth = VNC_FB_BITS_PER_PIX;
-        #endif
-        const unsigned int paletteSize = 1 << fbDepth;
-        // Update the color table if needed
-        GDHandle gdh = GetMainDevice();
-        PixMapHandle gpx = (*gdh)->gdPMap;
-        CTabHandle gct = (*gpx)->pmTable;
-        if(gct && ((*gct)->ctSeed != ctSeed) && (paletteSize == (*gct)->ctSize + 1)) {
-            for(int i = 0; i < paletteSize; i++) {
-                ctColors[i].red   = (*gct)->ctTable[i].rgb.red;
-                ctColors[i].green = (*gct)->ctTable[i].rgb.green;
-                ctColors[i].blue  = (*gct)->ctTable[i].rgb.blue;
+        if(hasColorQD) {
+            #ifdef VNC_FB_BITS_PER_PIX
+                const unsigned char fbDepth = VNC_FB_BITS_PER_PIX;
+            #endif
+            const unsigned int paletteSize = 1 << fbDepth;
+            // Update the color table if needed
+            GDHandle gdh = GetMainDevice();
+            PixMapHandle gpx = (*gdh)->gdPMap;
+            CTabHandle gct = (*gpx)->pmTable;
+            if(gct && ((*gct)->ctSeed != ctSeed) && (paletteSize == (*gct)->ctSize + 1)) {
+                for(int i = 0; i < paletteSize; i++) {
+                    ctColors[i].red   = (*gct)->ctTable[i].rgb.red;
+                    ctColors[i].green = (*gct)->ctTable[i].rgb.green;
+                    ctColors[i].blue  = (*gct)->ctTable[i].rgb.blue;
+                }
+                ctSeed = (*gct)->ctSeed;
+                fbColorMapNeedsUpdate = true;
             }
-            ctSeed = (*gct)->ctSeed;
-            fbColorMapNeedsUpdate = true;
         }
     #endif
 }

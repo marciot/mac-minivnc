@@ -17,6 +17,7 @@
 
 #include <string.h>
 
+#include "VNCServer.h"
 #include "VNCFrameBuffer.h"
 #include "VNCScreenHash.h"
 

@@ -21,6 +21,7 @@
 #include <Devices.h>
 
 #include "VNCServer.h"
+#include "VNCKeyboard.h"
 #include "VNCTypes.h"
 #include "VNCFrameBuffer.h"
 #include "VNCScreenHash.h"
@@ -132,6 +133,8 @@ VNCRect            fbUpdateRect;
 Boolean            fbUpdateInProgress, fbUpdatePending;
 
 OSErr vncServerStart() {
+    VNCKeyboard::Setup();
+
     vncError = VNCFrameBuffer::setup();
     if (vncError != noErr) return vncError;
 
@@ -474,27 +477,11 @@ void vncSetPixelFormat(const VNCSetPixFormat &pixFormat) {
         printf("Invalid pixel format requested\n");
         vncState = VNC_ERROR;
     }
-    /*#define VNC_CPIXEL(R,G,B) ((format.redMax   * R / 255) << format.redShift)   | \
-                              ((format.greenMax * G / 255) << format.greenShift) | \
-                              ((format.blueMax  * B / 255) << format.blueShift)
-    unsigned char *c = VNCEncoder::getPalette();
-    #if defined(VNC_FB_MONOCHROME)
-        // Packed pallete type with palleteSize = 2
-        c[0] = VNC_CPIXEL(255,   255,   255); // White
-        c[1] = VNC_CPIXEL(  0,     0,     0); // Black
-    #else
-        for(char i = 0; i < VNC_FB_PALETTE_SIZE; i++) {
-            unsigned short r, g, b;
-            VNCFrameBuffer::getColor(i, &r, &g, &b);
-            c[i] = VNC_CPIXEL(r >> 8,g >> 8,b >> 8);
-        }
-    #endif
-    #undef VNC_CPIXEL*/
 }
 
 void vncKeyEvent(const VNCKeyEvent &keyEvent) {
     if (allowControl) {
-        //printf("Got keyEvent %ld,%s\n", msg.key, msg.down ? "down" : "up");
+        VNCKeyboard::PressKey(keyEvent.key, keyEvent.down);
     }
 }
 

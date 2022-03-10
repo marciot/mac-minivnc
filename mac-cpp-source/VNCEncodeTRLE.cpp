@@ -16,7 +16,7 @@
  ****************************************************************************/
 #include <string.h>
 
-#include "VNCConfig.h"
+#include "VNCServer.h"
 #include "VNCFrameBuffer.h"
 #include "VNCEncodeTRLE.h"
 
@@ -28,20 +28,22 @@
 //#define USE_NATIVE_COLOR_TILES
 //#define DEBUG_TILE_TYPES
 
-#ifdef COMPRESSION_LEVEL
-    #if   COMPRESSION_LEVEL == 0
+#ifdef VNC_COMPRESSION_LEVEL
+    #if   VNC_COMPRESSION_LEVEL == 0
         #define USE_FAST_MONO_ENCODER
         #define USE_NATIVE_COLOR_TILES
-    #elif COMPRESSION_LEVEL == 1
+    #elif VNC_COMPRESSION_LEVEL == 1
+        #define USE_FAST_MONO_ENCODER
         #define USE_RLE_COLOR_TILES
-    #elif COMPRESSION_LEVEL == 2
+    #elif VNC_COMPRESSION_LEVEL == 2
+        #define USE_FAST_MONO_ENCODER
         #define USE_RLE_COLOR_TILES
         #define USE_NATIVE_COLOR_TILES
-    #elif COMPRESSION_LEVEL == 3
+    #elif VNC_COMPRESSION_LEVEL == 3
         #define USE_RLE_COLOR_TILES
         #define USE_NATIVE_COLOR_TILES
         #define USE_2_COLOR_TILES
-    #elif COMPRESSION_LEVEL == 4
+    #elif VNC_COMPRESSION_LEVEL == 4
         #define USE_RLE_COLOR_TILES
         #define USE_NATIVE_COLOR_TILES
         #define USE_2_COLOR_TILES
@@ -94,7 +96,7 @@ OSErr VNCEncoder::setup() {
     #else
         const unsigned long tilesPerRow = fbWidth / 16;
     #endif
-    #ifdef USE_FAST_MONO_ENCODER
+    #if defined(VNC_FB_MONOCHROME) || defined(USE_FAST_MONO_ENCODER)
         fbUpdateBuffer = (unsigned char*) NewPtr(tilesPerRow * PLAIN_PACKED_TILE_SIZE(1));
     #else
         fbUpdateBuffer = (unsigned char*) NewPtr(UPDATE_BUFFER_SIZE);

@@ -16,11 +16,14 @@
  ****************************************************************************/
 #include <string.h>
 
-#include "VNCConfig.h"
+#include "VNCServer.h"
 #include "VNCFrameBuffer.h"
 #include "VNCEncodeTRLE.h"
 
 #define DEBUG_SOLID_TILE 0 // Set to one to show solid tiles
+#define USE_ENCODER      0 // 0: Assembly; 1: Hybrid; 2: C++
+
+#define min(A,B) ((A) < (B) ? (A) : (B))
 
 extern int              tile_y;
 extern unsigned char    lastPaletteSize;
@@ -161,11 +164,11 @@ uSolidWhiteTile:
     #define GET_CHUNK VNCEncoder::getChunk
 #else
     #define GET_CHUNK  getChunkMonochrome
-
-    asm Boolean getChunkMonochrome(int x, int y, int w, int h, wdsEntry *wdsPtr);
 #endif
 
-#if 1
+#if USE_ENCODER == 0
+    asm Boolean getChunkMonochrome(int x, int y, int w, int h, wdsEntry *wdsPtr);
+
     asm Boolean GET_CHUNK(int x, int y, int w, int h, wdsEntry *wdsPtr) {
         #define xArg    8(a6)
         #define yArg   10(a6)
@@ -173,6 +176,7 @@ uSolidWhiteTile:
         #define hArg   14(a6)
         #define wdsArg 16(a6)
 
+        #define tmp     d1
         #define tiles   d3
         #define rows    d4
 
@@ -194,6 +198,7 @@ uSolidWhiteTile:
         add.w   tile_y,tmp
         #if VNC_FB_WIDTH == 512
             lsl.w   #6,tmp
+            ext.l   tmp
         #else
             #if !defined(VNC_FB_BITS_PER_PIX)
                 mulu fbStride,tmp
@@ -205,7 +210,8 @@ uSolidWhiteTile:
         // Add x/8
         move.w  xArg,tmp
         lsr.w   #3,tmp
-        adda.w tmp,src
+        ext.l   tmp
+        adda.l  tmp,src
 
         // Compute tiles:
         //   tiles = w/16
@@ -248,8 +254,22 @@ uSolidWhiteTile:
         movem.l (a7)+,d3-d4/a2-a4          // Save registers
         unlk     a6
         rts
+
+        #undef xArg
+        #undef yArg
+        #undef wArg
+        #undef hArg
+        #undef wdsArg
+
+        #undef tmp
+        #undef tiles
+        #undef rows
+
+        #undef src
+        #undef dst
+        #undef wds
     }
-#else
+#elif USE_ENCODER == 1
     /**
      * With "src" pointing to the first byte of a 16x16 tile on the screen, this function will write
      * "rows" as a two-color or solid tile and return the number of bytes written.
@@ -263,7 +283,71 @@ uSolidWhiteTile:
         rts
     }
 
+    Boolean GET_CHUNK(int x, int y, int w, int h, wdsEntry *wds);
+
     Boolean GET_CHUNK(int x, int y, int w, int h, wdsEntry *wds) {
+        const char rows = min(16, h - tile_y);
+        unsigned char *dst = fbUpdateBuffer;
+        unsigned char *src = VNCFrameBuffer::getPixelAddr(x, y + tile_y);
+        unsigned char tiles = w/16;
+        while(tiles--) {
+            dst += encodeTile(src, dst, rows);
+            src += 2;
+        }
+
+        wds->length = dst - fbUpdateBuffer;
+        wds->ptr = (Ptr) fbUpdateBuffer;
+
+        // Prepare for the next row
+        tile_y += 16;
+
+        return tile_y < h;
+    }
+#else
+    // C++ Reference Encoder
+
+    #define TILE_LINE(ROW) if(rows == ROW) goto done; \
+                         *dst++ = src[0 + ROW * VNC_BYTES_PER_LINE]; \
+                         *dst++ = src[1 + ROW * VNC_BYTES_PER_LINE];
+
+    unsigned short encodeTile(const unsigned char *src, unsigned char *dst, unsigned short rows);
+
+    unsigned short encodeTile(const unsigned char *src, unsigned char *dst, unsigned short rows) {
+        unsigned char *start = dst;
+
+        if(tile_y && dst != fbUpdateBuffer) {
+            // Packed pallete type with pallete reused from previous tile
+            *dst++ = 127;
+        } else {
+            // Packed pallete type with palleteSize = 2
+            *dst++ = 2; // Packed pallete type
+            *dst++ = 0; // Black CPIXEL
+            *dst++ = 1; // White CPIXEL
+        }
+
+        // Encode the packed data for a 16x16 tile
+        TILE_LINE(0);
+        TILE_LINE(1);
+        TILE_LINE(2);
+        TILE_LINE(3);
+        TILE_LINE(4);
+        TILE_LINE(5);
+        TILE_LINE(6);
+        TILE_LINE(7);
+        TILE_LINE(8);
+        TILE_LINE(9);
+        TILE_LINE(10);
+        TILE_LINE(11);
+        TILE_LINE(12);
+        TILE_LINE(13);
+        TILE_LINE(14);
+        TILE_LINE(15);
+    done:
+
+        return dst - start;
+    }
+
+    Boolean VNCEncoder::getChunk(int x, int y, int w, int h, wdsEntry *wds) {
         const char rows = min(16, h - tile_y);
         unsigned char *dst = fbUpdateBuffer;
         unsigned char *src = VNCFrameBuffer::getPixelAddr(x, y + tile_y);

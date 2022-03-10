@@ -29,8 +29,15 @@
 #include "VNCScreenHash.h"
 #include "VNCFrameBuffer.h"
 #include "OSUtilities.h"
+#include "GestaltUtils.h"
 
 #include <SIOUX.h>
+
+enum {
+    mApple = 1,
+    mFile = 2,
+    mEdit = 3
+};
 
 enum {
     iQuit  = 1,
@@ -47,7 +54,12 @@ DialogPtr gDialog;
 void ShowStatus(const char* format, ...);
 void SetDialogTitle(const char* format, ...);
 Boolean DoEvent(EventRecord *event);
+Boolean DoMenuSelection(long choice);
 ControlHandle FindCHndl(int item, short *type = NULL);
+OSErr StartServer();
+Boolean RunningAtStartup();
+void SetUpMenus();
+int ShowAlert(unsigned long type, short id, const char* format, ...);
 
 main() {
     #ifndef USE_STDOUT
@@ -61,13 +73,10 @@ main() {
         InitCursor();
     #endif
 
+    SetUpMenus();
+
     /* Create the new dialog */
     gDialog = GetNewDialog(128, NULL, (WindowPtr) -1);
-    #if defined(VNC_FB_MONOCHROME)
-        SetDialogTitle("%s (B&W)", __DATE__);
-    #else
-        SetDialogTitle("%s (Pack %d)", __DATE__, COMPRESSION_LEVEL);
-    #endif
 
     if(VNCFrameBuffer::checkScreenResolution())
         ShowStatus("Click \"Start Server\" to begin.");
@@ -75,6 +84,13 @@ main() {
     SetControlValue(FindCHndl(iGraphics), sendGraphics);
     SetControlValue(FindCHndl(iIncremental), allowIncremental);
     SetControlValue(FindCHndl(iControl), allowControl);
+
+    #ifdef VNC_HEADLESS_MODE
+        SetDialogTitle("GitHub Sponsor Edition");
+        if(RunningAtStartup()) {
+            StartServer();
+        }
+    #endif
 
     /* Run the event loop */
     while (!gCancel || !vncServerStopped()) {
@@ -87,8 +103,14 @@ main() {
         switch(vncServerError()) {
             case connectionClosing:
             case connectionTerminated:
-                vncServerStop();
-                vncServerStart();
+                #ifdef VNC_HEADLESS_MODE
+                    vncServerStop();
+                    vncServerStart();
+                #else
+                    vncServerStop();
+                    HiliteControl(FindCHndl(iStart), 0);
+                    ShowStatus("Connection closed");
+                #endif
                 break;
             case noErr:
                 VNCFrameBuffer::copy();
@@ -103,7 +125,9 @@ main() {
     DisposeDialog(gDialog);
     gDialog = NULL;
 
-    Alert(129, NULL); // Sponsorship dialog box
+    #ifndef VNC_HEADLESS_MODE
+        Alert(129, NULL); // Sponsorship dialog box
+    #endif
 
     return 0;
 }
@@ -140,6 +164,9 @@ Boolean DoEvent(EventRecord *event) {
                     vncServerStop();
                     gCancel = true;
                     break;
+                case inMenuBar:
+                    DoMenuSelection(MenuSelect(event->where));
+                    break;
                 case inContent:
                     if (window != FrontWindow()) {
                         SelectWindow(window);
@@ -164,12 +191,7 @@ Boolean DoEvent(EventRecord *event) {
             }
             switch (itemHit) {
                 case iStart:
-                    err = vncServerStart();
-                    if(err == noErr) {
-                        HiliteControl(FindCHndl(itemHit), 255);
-                    } else {
-                        ShowStatus("Error starting server %d.", err);
-                    }
+                    StartServer();
                     break;
                 case iGraphics:
                     sendGraphics = value;
@@ -188,6 +210,60 @@ Boolean DoEvent(EventRecord *event) {
         }
     }
     return(gCancel || stop);
+}
+
+void SetUpMenus() {
+    Handle ourMenu = GetNewMBar(128);
+    SetMenuBar( ourMenu );
+    DrawMenuBar();
+    AppendResMenu( GetMenuHandle( mApple ), 'DRVR' );
+}
+
+Boolean DoMenuSelection(long choice) {
+    Str255 daName;
+    Boolean handled = false;
+    const int menuId = HiWord(choice);
+    const int itemNum = LoWord(choice);
+    switch(menuId)  {
+        case mApple:
+            switch( itemNum ) {
+                case 1:
+                    ShowAlert(0, 130,
+                        #if defined(VNC_FB_MONOCHROME)
+                            "B&W for Compact Macs (%s)", __DATE__
+                        #else
+                            "Color Packing %d (%s)", VNC_COMPRESSION_LEVEL, __DATE__
+                        #endif
+
+                    );
+                    break;
+                default:
+                    GetMenuItemText( GetMenuHandle( mApple ), itemNum, daName );
+                    OpenDeskAcc( daName );
+                    break;
+            }
+            break;
+        case mFile: // File menu
+            if (itemNum == 1) { // Quit
+                vncServerStop();
+                gCancel = true;
+            }
+            break;
+        case mEdit: // Edit menu
+            break;
+    }
+    HiliteMenu(0);
+    return handled;
+}
+
+OSErr StartServer() {
+    OSErr err = vncServerStart();
+    if(err == noErr) {
+        HiliteControl(FindCHndl(iStart), 255);
+    } else {
+        ShowStatus("Error starting server %d.", err);
+    }
+    return err;
 }
 
 ControlHandle FindCHndl(int item, short *type) {
@@ -219,3 +295,57 @@ void SetDialogTitle(const char* format, ...) {
     pStr[0] = pStr[len] == '\n' ? len - 1 : len;
     SetWTitle(gDialog, pStr);
 }
+
+int ShowAlert(unsigned long type, short id, const char* format, ...) {
+    Str255 pStr;
+    va_list argptr;
+    va_start(argptr, format);
+    vsprintf((char*)pStr + 1, format, argptr);
+    va_end(argptr);
+    pStr[0] = strlen((char*)pStr + 1);
+    ParamText(pStr, "\p", "\p", "\p");
+    switch(type) {
+        case 'ERR': return StopAlert(id, NULL);
+        case 'YN': return NoteAlert(id, NULL);
+        default: return Alert(id, NULL);
+    }
+    return 0;
+}
+
+#ifdef VNC_HEADLESS_MODE
+    /**
+     * Determines whether we are in the "Startup Items" folder.
+     */
+    Boolean RunningAtStartup() {
+        OSErr           err;
+        short           parentVRefNum, startupVRefNum;
+        long            parentDirID, startupDirID;
+
+        if (GestaltTestAttr( gestaltFindFolderAttr, gestaltFindFolderPresent)) {
+            /* Obtain file handle to my application's resource file */
+            const short myRes = CurResFile();
+
+            /* Find my parent directory */
+            FCBPBRec param;
+            param.ioCompletion  = NULL;
+            param.ioNamePtr     = NULL;
+            param.ioVRefNum     = 0;
+            param.ioRefNum      = myRes;
+            param.ioFCBIndx     = 0;
+
+            OSErr err = PBGetFCBInfo( &param, FALSE );
+            const short parentVRefNum = param.ioFCBVRefNum;
+            const long parentDirID = param.ioFCBParID;
+
+            /* Determine whether we are in the "Startup Items" folder */
+            err = FindFolder( kOnSystemDisk, kStartupFolderType, kDontCreateFolder,
+                &startupVRefNum, &startupDirID );
+
+            if (err != noErr) return false;
+
+            return startupVRefNum == parentVRefNum &&
+                   startupDirID   == startupDirID;
+        }
+        return false;
+    }
+#endif
