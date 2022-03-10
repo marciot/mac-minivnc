@@ -24,6 +24,17 @@ developed and tested using a [RaSCSI device] operating as an
 Ethernet bridge, but should also work using a Mac with a built-in
 Ethernet port.
 
+Sponsorship Perks
+-----------------
+
+As a special reward to [GitHub sponsor] at the "Sustaining Supporter" tier or above, I am providing a 🎁 **bonus archive** in the releases page with additional perks. These perks are:
+
+- **RaSCSI System 7.0.1 Boot Image:** This pre-made disk image includes a complete installation of System 7.0.1 pre-configured with MacTCP, DaynaPort SCSI/Link drivers and MiniVNC running in headless mode, which allows RaSCSI users to boot and remotely control a Macintosh with _zero configuration_ and even _without an ADB mouse and keyboard_. This disk image can also be mounted and changed in Basillisk II.
+- **Headless Server Mode:** When placed in the "Startup Items", the Sponsors Edition of MiniVNC automatically starts listening for connections at system boot, allowing it to be used on Macs without a keyboard, mouse, or monitor.
+- **Different Compression Levels:** These custom builds allow experimentation with different compression modes.
+
+Please refer to your sponsorship welcome letter or GitHub sponsor dashboard for the archive password.
+
 How can you help?
 -----------------
 
