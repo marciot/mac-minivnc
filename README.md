@@ -14,6 +14,7 @@ on all vintage color Macs! :rainbow:
 
 - [Video 1](https://youtu.be/zM_sNItbuhc) - Running on a Macintosh Plus in B&W
 - [Video 2](https://youtu.be/_o8JiXqFHsk) - Running on a Macintosh LC II in Color
+- [Video 3](https://youtu.be/BJqkBN8TZkc) - Apple Lisa Chat and Remote Desktop Demo
 
 Compatibility
 -------------
