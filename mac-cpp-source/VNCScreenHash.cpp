@@ -26,8 +26,13 @@
     int ShowStatus(const char* format, ...);
 #endif
 
-#define COL_HASH_SIZE       (VNC_BYTES_PER_LINE/sizeof(long))
-#define ROW_HASH_SIZE       (VNC_FB_HEIGHT)
+#ifdef VNC_BYTES_PER_LINE
+    #define COL_HASH_SIZE ((VNC_BYTES_PER_LINE + sizeof(unsigned long) - 1)/sizeof(unsigned long))
+    #define ROW_HASH_SIZE (VNC_FB_HEIGHT)
+#else
+    #define COL_HASH_SIZE ((fbStride + sizeof(unsigned long) - 1)/sizeof(unsigned long))
+    #define ROW_HASH_SIZE fbHeight;
+#endif
 
 //#define TEST_HASH
 //#define HASH_COLUMNS_FIRST
@@ -63,14 +68,8 @@ static MonoHashData *data = NULL;
 void unionRect(const VNCRect *a,VNCRect *b);
 
 OSErr VNCScreenHash::setup() {
-    #ifdef VNC_BYTES_PER_LINE
-        const size_t colHashSize = VNC_BYTES_PER_LINE/sizeof(unsigned long);
-        const size_t rowHashSize = VNC_FB_HEIGHT;
-    #else
-        const size_t colHashSize = fbStride/sizeof(unsigned long);
-        const size_t rowHashSize = fbHeight;
-    #endif
-
+    const size_t colHashSize = COL_HASH_SIZE;
+    const size_t rowHashSize = ROW_HASH_SIZE;
     const size_t dataSize = sizeof(MonoHashData) + (colHashSize + rowHashSize) * 2 * sizeof(unsigned long);
     data = (MonoHashData*) NewPtr(dataSize);
     if (MemError() != noErr)
@@ -288,22 +287,13 @@ void VNCScreenHash::beginCompute() {
             memset(data->rowHashNext, 0, fbHeight * sizeof(unsigned long));
         #endif
     #else
-        #ifdef VNC_BYTES_PER_LINE
-            memset(data->colHashNext, 0, VNC_BYTES_PER_LINE);
-        #else
-            memset(data->colHashNext, 0, fbStride);
-        #endif
+        memset(data->colHashNext, 0, COL_HASH_SIZE * sizeof(unsigned long));
     #endif
 }
 
 void VNCScreenHash::computeDirty(int &x, int &y, int &w, int &h) {
-    #ifdef VNC_BYTES_PER_LINE
-        const unsigned int colHashSize = VNC_BYTES_PER_LINE/sizeof(unsigned long);
-        const unsigned int rowHashSize = VNC_FB_HEIGHT;
-    #else
-        const unsigned int colHashSize = fbStride/sizeof(unsigned long);
-        const unsigned int rowHashSize = fbHeight;
-    #endif
+    const size_t colHashSize = COL_HASH_SIZE;
+    const size_t rowHashSize = ROW_HASH_SIZE;
     #ifdef VNC_FB_BITS_PER_PIX
         const unsigned char pixPerByte = 8 / VNC_FB_BITS_PER_PIX;
     #else
@@ -477,7 +467,7 @@ sumLoop:
         #endif
 
         bra transferChunk
-    transferLoop:
+    chunkLoop:
         // Transfer 16 bytes at a time using four registers
         movem.l (a0)+,d1-d4        // Load 128 pixels
         adda.l  d1,a3              // Add to line sum
@@ -490,7 +480,28 @@ sumLoop:
         add.l   d4,(a1)+
 
     transferChunk:
-        dbra d5, transferLoop
+        dbra d5, chunkLoop
+
+        // Transfer remaining bytes that are not divisible by 16 bytes
+        // in chunks of two bytes instead.
+
+        #ifndef VNC_BYTES_PER_LINE
+            move.w fbStride,d5
+            and.w #15,d5
+            asr.w #1,d5
+        #else
+            move.w #(VNC_BYTES_PER_LINE & 15) / 2, d5
+        #endif
+
+        bra transferWords
+    wordLoop:
+        // Transfer two bytes at a time using one register
+        move.w (a0)+,d1            // Load 16 pixels
+        adda.w  d1,a3              // Add to line sum
+        add.w   d1,(a1)+           // Add to values to column hashes
+
+    transferWords:
+        dbra d5, wordLoop
     #endif
 
     move.l a3,(a2)+            // Write the line sum

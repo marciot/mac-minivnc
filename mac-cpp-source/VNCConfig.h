@@ -40,7 +40,9 @@
 
 //#define VNC_FB_RES_512_342
 //#define VNC_FB_RES_512_384
+//#define VNC_FB_RES_608_431
 //#define VNC_FB_RES_640_480
+//#define VNC_FB_RES_720_364
 //#define VNC_FB_RES_1024_768
 
 /**

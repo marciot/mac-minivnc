@@ -41,6 +41,16 @@ Boolean vncServerStopped();
   #define VNC_FB_WIDTH        640
   #define VNC_FB_HEIGHT       480
 
+#elif defined(VNC_FB_RES_608_431)
+  // Apple Lisa w/ Screen Kit
+  #define VNC_FB_WIDTH        608
+  #define VNC_FB_HEIGHT       431
+
+#elif defined(VNC_FB_RES_720_364)
+  // Apple Lisa
+  #define VNC_FB_WIDTH        720
+  #define VNC_FB_HEIGHT       364
+
 #elif defined(VNC_FB_RES_1024_768)
   #define VNC_FB_WIDTH        1024
   #define VNC_FB_HEIGHT       768
