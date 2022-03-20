@@ -7,8 +7,8 @@ MiniVNC is a remote desktop server that has been written from the
 ground up for best performance on 68k Macintosh computers.
 
 It was originally an experiment to see whether a Macintosh Plus could
-be controlled remotely, but has since been expanded to support color
-on all vintage color Macs! :rainbow:
+be controlled remotely, but has since been expanded to support the
+Apple Lisa and also all vintage color Macs! :rainbow:
 
 [![MiniVNC on a Macintosh LC II](https://github.com/marciot/mac-minivnc/raw/main/images/youtube2.png)](https://youtu.be/_o8JiXqFHsk)
 
