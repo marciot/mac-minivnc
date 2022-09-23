@@ -62,15 +62,19 @@ void SetUpMenus();
 int ShowAlert(unsigned long type, short id, const char* format, ...);
 
 main() {
-    #ifndef USE_STDOUT
-        InitGraf((Ptr) &qd.thePort);
-        InitFonts();
-        InitWindows();
-        InitMenus();
-        TEInit();
-        InitDialogs(0);
-        FlushEvents(everyEvent, 0);
-        InitCursor();
+    InitGraf((Ptr) &qd.thePort);
+    InitFonts();
+    InitWindows();
+    InitMenus();
+    TEInit();
+    InitDialogs(0);
+    FlushEvents(everyEvent, 0);
+    InitCursor();
+    
+    #ifdef USE_STDOUT
+    SIOUXSettings.standalone = FALSE;
+    SIOUXSettings.setupmenus = FALSE;
+    SIOUXSettings.initializeTB = FALSE;
     #endif
 
     SetUpMenus();
