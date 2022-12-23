@@ -6,7 +6,7 @@
 #include <string.h>
 
 /* msgbuf.cpp allows you to defer a printf from an interrupt handler to a later date in the
-   main event loop, where the memory mangaer won't hate you.
+   main event loop, where the memory manager won't hate you.
    
    Call dprintf() in your interrupt routine, then do_deferred_output in your event loop. */
 
@@ -58,3 +58,4 @@ void do_deferred_output() {
 		rdpos = (rdpos + 1) % CAPACITY;
 	}
 }
+
