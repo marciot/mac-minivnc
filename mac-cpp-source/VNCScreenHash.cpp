@@ -20,11 +20,7 @@
 #include "VNCServer.h"
 #include "VNCFrameBuffer.h"
 #include "VNCScreenHash.h"
-
-#ifndef USE_STDOUT
-    #define printf ShowStatus
-    int ShowStatus(const char* format, ...);
-#endif
+#include "msgbuf.h"
 
 #ifdef VNC_BYTES_PER_LINE
     #define COL_HASH_SIZE ((VNC_BYTES_PER_LINE + sizeof(unsigned long) - 1)/sizeof(unsigned long))
@@ -211,7 +207,7 @@ pascal void VNCScreenHash::myVBLTask(VBLTaskPtr theVBL) {
             endCompute();
             short colChk = memcmp(data->colHashPrev, data->colHashNext, 16);
             short rowChk = memcmp(data->rowHashPrev, data->rowHashNext, ROW_HASH_SIZE);
-            printf("Col: %s Row: %s ", colChk ? "ne" : "eq", rowChk ? "ne" : "eq");
+            dprintf("Col: %s Row: %s ", colChk ? "ne" : "eq", rowChk ? "ne" : "eq");
             callback(0, 0, VNC_FB_WIDTH, VNC_FB_HEIGHT);
             callback = NULL;
         }

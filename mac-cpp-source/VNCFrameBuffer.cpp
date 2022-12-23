@@ -23,11 +23,7 @@
 #include "VNCServer.h"
 #include "VNCTypes.h"
 #include "VNCFrameBuffer.h"
-
-#ifndef USE_STDOUT
-    #define printf ShowStatus
-    int ShowStatus(const char* format, ...);
-#endif
+#include "msgbuf.h"
 
 int ShowStatus(const char* format, ...);
 
@@ -91,9 +87,9 @@ OSErr VNCFrameBuffer::setup() {
         // Set a solid background
         //deskPat = GetPixPat(128);
         //DetachResource((Handle)deskPat);
-        //printf("DeskHook: %ld\n", LMGetDeskHook());
+        //dprintf("DeskHook: %ld\n", LMGetDeskHook());
         //SetDeskCPat(deskPat);
-        //printf("DeskHook: %ld\n", LMGetDeskHook());
+        //dprintf("DeskHook: %ld\n", LMGetDeskHook());
     }
 
     copy();
