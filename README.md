@@ -19,15 +19,16 @@ Apple Lisa and also all vintage color Macs! :rainbow:
 Compatibility
 -------------
 
+Because MiniVNC does not fully implement the VNC standard (for
+performance reasons), it will not work with every VNC client. 
+[RealVNC Viewer](https://www.realvnc.com/en/connect/download/viewer/)
+is confirmed to work well.
+
 MiniVNC is built on MacTCP and requires System 7, but it will
 operate on later Macs using Open Transport. MiniVNC has been
 developed and tested using a [RaSCSI device] operating as an
 Ethernet bridge, but should also work using a Mac with a built-in
 Ethernet port.
-
-Because MiniVNC does not fully implement the VNC standard (for
-performance reasons), it not every VNC client is compatible. It
-works well with [RealVNC Viewer](https://www.realvnc.com/en/connect/download/viewer/)
 
 Sponsorship Perks
 -----------------
