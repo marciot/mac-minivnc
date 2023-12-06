@@ -25,6 +25,10 @@ developed and tested using a [RaSCSI device] operating as an
 Ethernet bridge, but should also work using a Mac with a built-in
 Ethernet port.
 
+Because MiniVNC does not fully implement the VNC standard (for
+performance reasons), it not every VNC client is compatible. It
+works well with [RealVNC Viewer](https://www.realvnc.com/en/connect/download/viewer/)
+
 Sponsorship Perks
 -----------------
 
