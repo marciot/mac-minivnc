@@ -19,6 +19,7 @@
 #include "VNCServer.h"
 #include "VNCFrameBuffer.h"
 #include "VNCEncodeTRLE.h"
+#include "msgbuf.h"
 
 //#define USE_16_COLOR_TILES
 //#define USE_4_COLOR_TILES
@@ -59,11 +60,6 @@
 
 #if defined(USE_2_COLOR_TILES) || defined(USE_4_COLOR_TILES) || defined(USE_16_COLOR_TILES)
     #define RLE_GATHERS_PALETTE
-#endif
-
-#ifndef USE_STDOUT
-    #define printf ShowStatus
-    int ShowStatus(const char* format, ...);
 #endif
 
 int              tile_x, tile_y;
@@ -1257,7 +1253,7 @@ void VNCEncoder::begin() {
                         case 4: return 0;
                         case 16: return 0;
                         case 128: return 1;
-                        default: printf("Invalid type: %d", type); return 1;
+                        default: dprintf("Invalid type: %d", type); return 1;
                     }
                 default:
                     return 0;

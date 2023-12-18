@@ -30,6 +30,7 @@
 #include "VNCFrameBuffer.h"
 #include "OSUtilities.h"
 #include "GestaltUtils.h"
+#include "msgbuf.h"
 
 #include <SIOUX.h>
 
@@ -104,6 +105,7 @@ main() {
             if(!SIOUXHandleOneEvent(&event))
         #endif
         DoEvent(&event);
+        do_deferred_output();
         switch(vncServerError()) {
             case connectionClosing:
             case connectionTerminated:

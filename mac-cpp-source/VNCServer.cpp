@@ -27,13 +27,9 @@
 #include "VNCScreenHash.h"
 #include "VNCEncodeTRLE.h"
 #include "ChainedTCPHelper.h"
+#include "msgbuf.h"
 
 //#define VNC_DEBUG
-
-#ifndef USE_STDOUT
-    #define printf ShowStatus
-    int ShowStatus(const char* format, ...);
-#endif
 
 enum {
     VNC_STOPPED,
@@ -153,14 +149,14 @@ OSErr vncServerStart() {
     fbUpdateRect.w = 0;
     fbUpdateRect.h = 0;
 
-    printf("Opening network driver\n");
+    dprintf("Opening network driver\n");
     vncError = tcp.begin(&epb_recv.pb);
     if (vncError != noErr) return vncError;
 
     epb_recv.ourA5 = SetCurrentA5();
     epb_recv.pb.ioCompletion = PreCompletion;
 
-    printf("Creating network stream\n");
+    dprintf("Creating network stream\n");
     recvBuffer = NewPtr(kBufSize);
     vncError = MemError();
     if(vncError != noErr) return vncError;
@@ -217,7 +213,7 @@ pascal void tcpStreamCreated(TCPiopb *pb) {
         vncState = VNC_WAITING;
         stream = tcp.getStream(pb);
         // wait for a connection
-        printf("Waiting for connection\n");
+        dprintf("Waiting for connection\n");
         tcp.then(pb, tcpSendProtocolVersion);
         tcp.waitForConnection(pb, stream, kTimeOut, 5900);
     }
@@ -234,7 +230,7 @@ pascal void tcpSendProtocolVersion(TCPiopb *pb) {
 
         // send the VNC protocol version
         #ifdef VNC_DEBUG
-            printf("Sending Protocol Version!\n");
+            dprintf("Sending Protocol Version!\n");
         #endif
         myWDS[0].ptr = (Ptr) vncServerVersion;
         myWDS[0].length = strlen(vncServerVersion);
@@ -256,11 +252,11 @@ pascal void tcpRequestClientProtocolVersion(TCPiopb *pb) {
 pascal void tcpSendSecurityHandshake(TCPiopb *pb) {
     if (tcpSuccess(pb)) {
         #ifdef VNC_DEBUG
-            printf("Client VNC Version: %s\n", vncClientVersion);
+            dprintf("Client VNC Version: %s\n", vncClientVersion);
         #endif
 
         // send the VNC security handshake
-        printf("Sending VNC Security Handshake\n");
+        dprintf("Sending VNC Security Handshake\n");
         myWDS[0].ptr = (Ptr) &vncSecurityHandshake;
         myWDS[0].length = sizeof(long);
         tcp.then(pb, tcpRequestClientInit);
@@ -279,10 +275,10 @@ pascal void tcpRequestClientInit(TCPiopb *pb) {
 pascal void tcpSendServerInit(TCPiopb *pb) {
     if (tcpSuccess(pb)) {
         #ifdef VNC_DEBUG
-            printf("Client Init: %d\n", vncClientInit);
+            dprintf("Client Init: %d\n", vncClientInit);
         #endif
         // send the VNC security handshake
-        printf("Connection established!\n");
+        dprintf("Connection established!\n");
         #ifdef VNC_FB_WIDTH
             vncServerInit.fbWidth = VNC_FB_WIDTH;
             vncServerInit.fbHeight = VNC_FB_HEIGHT;
@@ -379,7 +375,7 @@ void processMessageFragment(const char *src, size_t len) {
             case mClientCutText:   msgSize = sizeof(VNCClientCutText); break;
             case mSetEncodings:    msgSize = getSetEncodingFragmentSize(bytesRead); break;
             default:
-                printf("Invalid message: %d\n", vncClientMessage.message);
+                dprintf("Invalid message: %d\n", vncClientMessage.message);
                 vncServerStop();
                 break;
         }
@@ -464,7 +460,7 @@ pascal void vncFinishMessage(TCPiopb *pb) {
 
 void vncEncoding(unsigned long) {
     #ifdef VNC_DEBUG
-        printf("Got encoding %ld\n", vncClientMessage.setEncodingOne.encoding);
+        dprintf("Got encoding %ld\n", vncClientMessage.setEncodingOne.encoding);
     #endif
 }
 
@@ -474,7 +470,7 @@ void vncSetPixelFormat(const VNCSetPixFormat &pixFormat) {
         const unsigned char fbDepth = VNC_FB_BITS_PER_PIX;
     #endif
     if (format.trueColor || format.depth != fbDepth) {
-        printf("Invalid pixel format requested\n");
+        dprintf("Invalid pixel format requested\n");
         vncState = VNC_ERROR;
     }
 }
@@ -487,7 +483,7 @@ void vncKeyEvent(const VNCKeyEvent &keyEvent) {
 
 void vncPointerEvent(const VNCPointerEvent &pointerEvent) {
     if (allowControl) {
-        //printf("Got pointerEvent %d,%d,%d\n", pointerEvent.x, pointerEvent.y, (short) pointerEvent.btnMask);
+        //dprintf("Got pointerEvent %d,%d,%d\n", pointerEvent.x, pointerEvent.y, (short) pointerEvent.btnMask);
 
         //static UInt32 lastEventTicks = 0;
 
@@ -550,12 +546,12 @@ void vncFBUpdateRequest(const VNCFBUpdateReq &fbUpdateReq) {
 // Callback for the VBL task
 pascal void vncGotDirtyRect(int x, int y, int w, int h) {
     if(fbUpdateInProgress) {
-        printf("Got dirty rect while busy\n");
+        dprintf("Got dirty rect while busy\n");
         return;
     }
-    //printf("Got dirty rect");
+    //dprintf("Got dirty rect");
     if (vncState == VNC_RUNNING) {
-        //printf("%d,%d,%d,%d\n",x,y,w,h);
+        //dprintf("%d,%d,%d,%d\n",x,y,w,h);
         fbUpdateRect.x = x;
         fbUpdateRect.y = y;
         fbUpdateRect.w = w;
@@ -575,7 +571,7 @@ void vncSendFBUpdate(Boolean incremental) {
             vncGotDirtyRect
         );
         if(err != noErr) {
-            printf("Failed to request update %d", err);
+            dprintf("Failed to request update %d", err);
             vncError = err;
         }
     } else {
@@ -667,7 +663,7 @@ pascal void vncSendFBUpdateRow(TCPiopb *pb) {
 }
 
 pascal void vncSendFBUpdateFinished(TCPiopb *pb) {
-    //printf("Update finished");
+    //dprintf("Update finished");
     fbUpdateInProgress = false;
     if(fbUpdatePending) {
         vncSendFBUpdate(true);
