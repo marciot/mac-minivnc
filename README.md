@@ -20,12 +20,12 @@ Compatibility
 -------------
 
 MiniVNC uses TRLE encoding (Tiled Run-Length Encoding) and paletted
-colors. While this encoding provides usable performance on vintage
+colors. While this encoding provides the best performance on vintage
 Macs, client support is very limited.
 
 | Client               | OS      | TRLE  | ZRLE    | Hextile | Palette | Notes               |
 |----------------------|---------|-------|---------|---------|---------|---------------------|
-| [RealVNC Viewer]     | Windows | Yes   |  Yes    |  No     |  Yes    | Recommended viewer  |
+| [RealVNC Viewer]     | Windows | Yes   |  Yes    |  Yes    |  Yes    | Recommended viewer  |
 | [TightVNC]           | Windows | No    |  Yes    |  Yes    |  No     | Incompatible        |
 | [MacVNC]             | macOS 7 | ?     |  ?      |  ?      |  ?      | Under test          |
 | [VNCThing 2.2]       | macOS 8 | No    |  No     |  Yes    |  ?      |                     |
