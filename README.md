@@ -23,13 +23,13 @@ MiniVNC uses TRLE encoding (Tiled Run-Length Encoding) and paletted
 colors. While this encoding provides usable performance on vintage
 Macs, client support is very limited.
 
-| Client               | OS      | TRLE  | Palette | Notes               |
-|----------------------|---------|-------|---------|---------------------|
-| [RealVNC Viewer]     | Windows | Yes   |  Yes    | Recommended viewer  |
-| [TightVNC]           | Windows | No    |  No     | Incompatible        |
-| [MacVNC]             | macOS 7 | ?     |  ?      | Under test          |
-| [VNCThing 2.2]       | macOS 8 |  No   |  ?      |                     |
-| Screen Sharing       | macOS X | ?     |  ?      | Fails on handshake  |
+| Client               | OS      | TRLE  | ZRLE    | Hextile | Palette | Notes               |
+|----------------------|---------|-------|---------|---------|---------|---------------------|
+| [RealVNC Viewer]     | Windows | Yes   |  Yes    |  No     |  Yes    | Recommended viewer  |
+| [TightVNC]           | Windows | No    |  Yes    |  Yes    |  No     | Incompatible        |
+| [MacVNC]             | macOS 7 | ?     |  ?      |  ?      |  ?      | Under test          |
+| [VNCThing 2.2]       | macOS 8 | No    |  No     |  Yes    |  ?      |                     |
+| Screen Sharing       | macOS X | No    |  Yes    |  No     |  ?      |                     |
 
 MiniVNC is built on MacTCP and requires System 7, but it will
 operate on later Macs using Open Transport. MiniVNC has been
