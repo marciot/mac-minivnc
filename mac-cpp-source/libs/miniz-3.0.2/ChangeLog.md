@@ -1,5 +1,9 @@
 ## Changelog
 
+### 3.0.2 (mlt4356-github@yahoo.com)
+
+ - Fixes for compatibility with CodeWarrior 8 Gold on macOS 8.1
+
 ### 3.0.2
 
  - Fix buffer overrun in mz_utf8z_to_widechar on Windows

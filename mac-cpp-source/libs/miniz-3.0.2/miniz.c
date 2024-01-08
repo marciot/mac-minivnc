@@ -29,7 +29,9 @@
 
 typedef unsigned char mz_validate_uint16[sizeof(mz_uint16) == 2 ? 1 : -1];
 typedef unsigned char mz_validate_uint32[sizeof(mz_uint32) == 4 ? 1 : -1];
+#if MINIZ_HAS_64BIT_INTEGERS
 typedef unsigned char mz_validate_uint64[sizeof(mz_uint64) == 8 ? 1 : -1];
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -323,8 +325,10 @@ int mz_compress2(unsigned char *pDest, mz_ulong *pDest_len, const unsigned char 
     memset(&stream, 0, sizeof(stream));
 
     /* In case mz_ulong is 64-bits (argh I hate longs). */
+    #if MINIZ_HAS_64BIT_INTEGERS
     if ((mz_uint64)(source_len | *pDest_len) > 0xFFFFFFFFU)
         return MZ_PARAM_ERROR;
+    #endif
 
     stream.next_in = pSource;
     stream.avail_in = (mz_uint32)source_len;
@@ -566,8 +570,10 @@ int mz_uncompress2(unsigned char *pDest, mz_ulong *pDest_len, const unsigned cha
     memset(&stream, 0, sizeof(stream));
 
     /* In case mz_ulong is 64-bits (argh I hate longs). */
+    #if MINIZ_HAS_64BIT_INTEGERS
     if ((mz_uint64)(*pSource_len | *pDest_len) > 0xFFFFFFFFU)
         return MZ_PARAM_ERROR;
+    #endif
 
     stream.next_in = pSource;
     stream.avail_in = (mz_uint32)*pSource_len;
@@ -1251,7 +1257,7 @@ static mz_bool tdefl_compress_block(tdefl_compressor *d, mz_bool static_block)
     return tdefl_compress_lz_codes(d);
 }
 
-static const mz_uint s_tdefl_num_probes[11];
+static const mz_uint s_tdefl_num_probes[11] = { 0, 1, 6, 32, 16, 32, 128, 256, 512, 768, 1500 };
 
 static int tdefl_flush_block(tdefl_compressor *d, int flush)
 {
@@ -2109,8 +2115,6 @@ size_t tdefl_compress_mem_to_mem(void *pOut_buf, size_t out_buf_len, const void 
         return 0;
     return out_buf.m_size;
 }
-
-static const mz_uint s_tdefl_num_probes[11] = { 0, 1, 6, 32, 16, 32, 128, 256, 512, 768, 1500 };
 
 /* level may actually range from [0,10] (10 is a "hidden" max level, where we want a bit more compression and it's fine if throughput to fall off a cliff on some files). */
 mz_uint tdefl_create_comp_flags_from_zip_params(int level, int window_bits, int strategy)

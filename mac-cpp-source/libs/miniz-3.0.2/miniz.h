@@ -535,7 +535,9 @@ typedef void *const voidpc;
 
 #pragma once
 #include <assert.h>
+#if MINIZ_HAS_64BIT_INTEGERS
 #include <stdint.h>
+#endif
 #include <stdlib.h>
 #include <string.h>
 
@@ -545,10 +547,12 @@ typedef void *const voidpc;
 typedef unsigned char mz_uint8;
 typedef signed short mz_int16;
 typedef unsigned short mz_uint16;
-typedef unsigned int mz_uint32;
-typedef unsigned int mz_uint;
+typedef unsigned long mz_uint32;
+typedef unsigned long mz_uint;
+#if MINIZ_HAS_64BIT_INTEGERS
 typedef int64_t mz_int64;
 typedef uint64_t mz_uint64;
+#endif
 typedef int mz_bool;
 
 #define MZ_FALSE (0)
@@ -640,7 +644,7 @@ extern "C" {
 /* ------------------- Low-level Compression API Definitions */
 
 /* Set TDEFL_LESS_MEMORY to 1 to use less memory (compression will be slightly slower, and raw/dynamic blocks will be output more frequently). */
-#define TDEFL_LESS_MEMORY 0
+#define TDEFL_LESS_MEMORY 1
 
 /* tdefl_init() compression flags logically OR'd together (low 12 bits contain the max. number of probes per dictionary search): */
 /* TDEFL_DEFAULT_MAX_PROBES: The compressor defaults to 128 dictionary probes per dictionary search. 0=Huffman only, 1=Huffman+LZ (fastest/crap compression), 4095=Huffman+LZ (slowest/best compression). */
@@ -723,7 +727,7 @@ enum
 enum
 {
     TDEFL_LZ_CODE_BUF_SIZE = 24 * 1024,
-    TDEFL_OUT_BUF_SIZE = (TDEFL_LZ_CODE_BUF_SIZE * 13) / 10,
+    TDEFL_OUT_BUF_SIZE = ((unsigned long)TDEFL_LZ_CODE_BUF_SIZE * 13) / 10,
     TDEFL_MAX_HUFF_SYMBOLS = 288,
     TDEFL_LZ_HASH_BITS = 12,
     TDEFL_LEVEL1_HASH_SIZE_MASK = 4095,
