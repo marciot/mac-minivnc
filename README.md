@@ -19,16 +19,28 @@ Apple Lisa and also all vintage color Macs! :rainbow:
 Compatibility
 -------------
 
-Because MiniVNC does not fully implement the VNC standard (for
-performance reasons), it will not work with every VNC client. 
-[RealVNC Viewer](https://www.realvnc.com/en/connect/download/viewer/)
-is confirmed to work well.
+MiniVNC uses TRLE encoding (Tiled Run-Length Encoding) and paletted
+colors. While this encoding provides the best performance on vintage
+Macs, client support is very limited.
+
+| Client               | OS      | TRLE  | ZRLE    | Hextile | Palette | Notes               |
+|----------------------|---------|-------|---------|---------|---------|---------------------|
+| [RealVNC Viewer]     | Windows | Yes   |  Yes    |  Yes    |  Yes    | Recommended viewer  |
+| [TightVNC]           | Windows | No    |  Yes    |  Yes    |  No     |                     |
+| [MacVNC]             | macOS 7 | No    |  No     |  Yes    |  No     |                     |
+| [VNCThing 2.2]       | macOS 8 | No    |  No     |  Yes    |  No     |                     |
+| Screen Sharing       | macOS X | No    |  Yes    |  No     |  ?      |                     |
 
 MiniVNC is built on MacTCP and requires System 7, but it will
 operate on later Macs using Open Transport. MiniVNC has been
 developed and tested using a [RaSCSI device] operating as an
 Ethernet bridge, but should also work using a Mac with a built-in
 Ethernet port.
+
+[RealVNC Viewer]:https://www.realvnc.com/en/connect/download/viewer/
+[TightVNC]:https://www.tightvnc.com/
+[VNCThing 2.2]:https://web.archive.org/web/20010813214257/http://www.webthing.net/vncthing
+[MacVNC]:https://macintoshgarden.org/apps/vnc-viewer-fat
 
 Sponsorship Perks
 -----------------
