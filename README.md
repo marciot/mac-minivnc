@@ -1,4 +1,4 @@
-![MiniVNC for Macintosh][mac-screenshot]
+![MiniVNC for Macintosh][minivnc-main] ![MiniVNC for Macintosh][minivnc-options]
 
 MiniVNC Remote Desktop Server for Vintage Macintosh Computers
 =============================================================
@@ -77,7 +77,9 @@ performance.
 [ChromiVNC]: https://web.archive.org/web/20070208223046/http://www.chromatix.uklinux.net/vnc/index.html
 [Remote Framebuffer Protocol]: https://datatracker.ietf.org/doc/html/rfc6143
 [RaSCSI device]: https://github.com/akuker/RASCSI
-[mac-screenshot]: https://github.com/marciot/mac-minivnc/raw/main/images/screenshot.png "MiniVNC Screenshot"
+[minivnc-main]: https://github.com/marciot/mac-minivnc/raw/main/images/main-v1.1.png "MiniVNC Main Window"
+[minivnc-options]: https://github.com/marciot/mac-minivnc/raw/main/images/server-options-v1.1.png "MiniVNC Server Options"
+[minivnc-logs]: https://github.com/marciot/mac-minivnc/raw/main/images/server-options-v1.1.png "MiniVNC Server Logs"
 
 More Software for Vintage Macs
 ------------------------------
