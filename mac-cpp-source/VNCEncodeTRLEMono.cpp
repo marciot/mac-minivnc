@@ -1,5 +1,5 @@
 /****************************************************************************
- *   MiniVNC (c) 2022 Marcio Teixeira                                       *
+ *   MiniVNC (c) 2022-2024 Marcio Teixeira                                  *
  *                                                                          *
  *   This program is free software: you can redistribute it and/or modify   *
  *   it under the terms of the GNU General Public License as published by   *
@@ -23,11 +23,14 @@
 #define DEBUG_SOLID_TILE 0 // Set to one to show solid tiles
 #define USE_ENCODER      0 // 0: Assembly; 1: Hybrid; 2: C++
 
-#define min(A,B) ((A) < (B) ? (A) : (B))
+#define TileRaw        0
+#define TileSolid      1
+#define Tile2Color     2
+#define TileReuse    127
+#define TilePlainRLE 128
 
 extern int              tile_y;
 extern unsigned char    lastPaletteSize;
-extern unsigned char   *fbUpdateBuffer;
 
 /**
  * This is a fast version of a B&W tile encoder. On entry:
@@ -161,7 +164,7 @@ uSolidWhiteTile:
 }
 
 #if defined(VNC_FB_MONOCHROME)
-    #define GET_CHUNK VNCEncoder::getChunk
+    #define GET_CHUNK VNCEncodeTRLE::getChunk
 #else
     #define GET_CHUNK  getChunkMonochrome
 #endif
@@ -347,7 +350,7 @@ uSolidWhiteTile:
         return dst - start;
     }
 
-    Boolean VNCEncoder::getChunk(int x, int y, int w, int h, wdsEntry *wds) {
+    Boolean VNCEncodeTRLE::getChunk(int x, int y, int w, int h, wdsEntry *wds) {
         const char rows = min(16, h - tile_y);
         unsigned char *dst = fbUpdateBuffer;
         unsigned char *src = VNCFrameBuffer::getPixelAddr(x, y + tile_y);

@@ -14,19 +14,25 @@
  *   To view a copy of the GNU General Public License, go to the following  *
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
+#include <string.h>
 
-#pragma once
+#include "VNCServer.h"
+#include "VNCFrameBuffer.h"
+#include "VNCEncodeRAW.h"
 
-#include "MacTCP.h"
-#include "VNCEncoder.h"
+int line;
 
-class VNCEncodeTRLE {
-    public:
-        static Size minBufferSize();
+Size VNCEncodeRaw::minBufferSize() {
+    return 0;
+}
 
-        static int begin();
-        static Boolean getChunk(int x, int y, int w, int h, wdsEntry *wds);
+int VNCEncodeRaw::begin() {
+    line = 0;
+    return EncoderOk;
+}
 
-        static long getEncoding() {return mTRLEEncoding;}
-};
-
+Boolean VNCEncodeRaw::getChunk(int x, int y, int w, int h, wdsEntry *wds) {
+    wds->length = w;
+    wds->ptr = (Ptr) VNCFrameBuffer::getPixelAddr(x, y + line);
+    return ++line < h;
+}

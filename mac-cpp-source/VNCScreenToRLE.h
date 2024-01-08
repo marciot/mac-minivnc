@@ -17,16 +17,4 @@
 
 #pragma once
 
-#include "MacTCP.h"
-#include "VNCEncoder.h"
-
-class VNCEncodeTRLE {
-    public:
-        static Size minBufferSize();
-
-        static int begin();
-        static Boolean getChunk(int x, int y, int w, int h, wdsEntry *wds);
-
-        static long getEncoding() {return mTRLEEncoding;}
-};
-
+unsigned short writeScreenTileAsRLE(const unsigned char *src, unsigned char *dst, const unsigned char* end, char rows, char cols);

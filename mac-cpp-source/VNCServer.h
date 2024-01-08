@@ -1,5 +1,5 @@
 /****************************************************************************
- *   MiniVNC (c) 2022 Marcio Teixeira                                       *
+ *   MiniVNC (c) 2022-2024 Marcio Teixeira                                  *
  *                                                                          *
  *   This program is free software: you can redistribute it and/or modify   *
  *   it under the terms of the GNU General Public License as published by   *
@@ -16,13 +16,31 @@
  ****************************************************************************/
 
 #include "VNCConfig.h"
+#include "VNCTypes.h"
 
-extern Boolean allowControl, sendGraphics, allowIncremental, fbColorMapNeedsUpdate;
+struct VNCFlags {
+    unsigned short fbColorMapNeedsUpdate : 1;
+    unsigned short fbUpdateInProgress : 1;
+    unsigned short fbUpdatePending : 1;
+    unsigned short clientTakesRaw : 1;
+    unsigned short clientTakesHextile : 1;
+    unsigned short clientTakesTRLE : 1;
+    unsigned short clientTakesZRLE : 1;
+    unsigned short clientTakesCursor : 1;
+    unsigned short forceVNCAuth : 1;
+};
+
+extern VNCConfig vncConfig;
+extern VNCFlags vncFlags;
+extern Point vncLastMousePosition;
+extern Boolean runFBSyncedTasks;
+extern pascal void vncFBSyncTasksDone();
 
 OSErr vncServerStart();
 OSErr vncServerStop();
 OSErr vncServerError();
 Boolean vncServerStopped();
+Boolean vncServerActive();
 
 // Constants for specialized builds
 
@@ -76,3 +94,6 @@ Boolean vncServerStopped();
 #ifdef VNC_FB_WIDTH
     #define VNC_BYTES_PER_LINE (VNC_FB_WIDTH / VNC_FB_PIX_PER_BYTE)
 #endif
+
+#define min(A,B) ((A) < (B) ? (A) : (B))
+#define max(A,B) ((A) > (B) ? (A) : (B))

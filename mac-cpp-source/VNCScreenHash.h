@@ -1,5 +1,5 @@
 /****************************************************************************
- *   MiniVNC (c) 2022 Marcio Teixeira                                       *
+ *   MiniVNC (c) 2022-2024 Marcio Teixeira                                  *
  *                                                                          *
  *   This program is free software: you can redistribute it and/or modify   *
  *   it under the terms of the GNU General Public License as published by   *
@@ -19,6 +19,8 @@
 
 #include "VNCTypes.h"
 #include <Retrace.h>
+
+#define requestAlreadyScheduled -999
 
 typedef pascal void (*HashCallbackPtr)(int x, int y, int w, int h);
 
@@ -42,5 +44,5 @@ class VNCScreenHash {
     public:
         static OSErr setup();
         static OSErr destroy();
-        static Boolean requestDirtyRect(int x, int y, int w, int h, HashCallbackPtr);
+        static OSErr requestDirtyRect(int x, int y, int w, int h, HashCallbackPtr);
 };

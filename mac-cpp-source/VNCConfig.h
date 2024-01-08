@@ -1,5 +1,5 @@
 /****************************************************************************
- *   MiniVNC (c) 2022 Marcio Teixeira                                       *
+ *   MiniVNC (c) 2022-2024 Marcio Teixeira                                  *
  *                                                                          *
  *   This program is free software: you can redistribute it and/or modify   *
  *   it under the terms of the GNU General Public License as published by   *
@@ -17,12 +17,15 @@
 
 #pragma once
 
+#define USE_STDOUT
+#define LOG_COMPRESSION_STATS 0
+
 /**
  * Specify a compression level for the color TTRL encoder,
  * from 0 to 4
  */
 
-#define VNC_COMPRESSION_LEVEL 2
+#define VNC_COMPRESSION_LEVEL 4
 
 /**
  * If the following is defined, MiniVNC will automatically
@@ -55,4 +58,27 @@
 //#define VNC_FB_16_COLORS
 //#define VNC_FB_256_COLORS
 
+// Data Structure for storing preferences
 
+struct VNCConfig {
+    unsigned short majorVersion;
+    unsigned short minorVersion;
+    unsigned short allowStreaming : 1;
+    unsigned short allowIncremental : 1;
+    unsigned short allowControl : 1;
+    unsigned short hideCursor : 1;
+    unsigned short allowRaw : 1;
+    unsigned short allowHextile : 1;
+    unsigned short allowTRLE : 1;
+    unsigned short allowZRLE : 1;
+    unsigned short autoRestart : 1;
+    unsigned short forceVNCAuth : 1;
+    unsigned short : 0;
+    unsigned char  zLibLevel;
+    char           sessionName[11];
+    unsigned short tcpPort;
+    unsigned long  validation;
+};
+
+OSErr LoadPreferences();
+OSErr SavePreferences();

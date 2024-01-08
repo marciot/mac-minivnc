@@ -1,5 +1,5 @@
 /****************************************************************************
- *   MiniVNC (c) 2022 Marcio Teixeira                                       *
+ *   MiniVNC (c) 2022-2024 Marcio Teixeira                                  *
  *                                                                          *
  *   This program is free software: you can redistribute it and/or modify   *
  *   it under the terms of the GNU General Public License as published by   *
@@ -16,6 +16,18 @@
  ****************************************************************************/
 
 #pragma once
+
+enum {
+    mConnectionFailed  = 0,
+    mNoAuthentication  = 1,
+    mVNCAuthentication = 2
+};
+
+enum {
+    mAuthOK            = 0,
+    mAuthFailed        = 1,
+    mAuthTooMany       = 2
+};
 
 enum {
     mSetPixelFormat   = 0,
@@ -35,7 +47,11 @@ enum {
 
 enum {
     mRawEncoding      = 0,
-    mTRLEEncoding     = 15
+    mHextileEncoding  = 5,
+    mZLibEncoding     = 6,
+    mTRLEEncoding     = 15,
+    mZRLEEncoding     = 16,
+    mCursorEncoding   = -239
 };
 
 struct VNCRect {
@@ -53,10 +69,14 @@ struct VNCPixelFormat {
     unsigned short redMax;
     unsigned short greenMax;
     unsigned short blueMax;
-    unsigned char redShift;
-    unsigned char greenShift;
-    unsigned char blueShift;
-    char padding[3];
+    unsigned char  redShift;
+    unsigned char  greenShift;
+    unsigned char  blueShift;
+    unsigned char  padding[3];
+};
+
+struct VNCServerProto {
+    char version[12];
 };
 
 struct VNCServerInit {
@@ -65,6 +85,24 @@ struct VNCServerInit {
     VNCPixelFormat format;
     unsigned long  nameLength;
     char name[10];
+};
+
+struct VNCServerAuthTypeList {
+    unsigned char numberOfAuthTypes;
+    unsigned char authTypes[1];
+};
+
+struct VNCServerAuthType {
+    unsigned long type;
+    unsigned char challenge[16];
+};
+
+struct VNCServerAuthChallenge {
+    unsigned char challenge[16];
+};
+
+struct VNCServerAuthResult {
+    unsigned long result;
 };
 
 struct VNCSetPixFormat {
@@ -109,8 +147,11 @@ struct VNCFBUpdate {
     unsigned char  message;
     unsigned char  padding;
     unsigned short numRects;
-    VNCRect        rect;
-    long           encodingType;
+};
+
+struct VNCFBUpdateRect {
+    VNCRect rect;
+    long encodingType;
 };
 
 struct VNCKeyEvent {
@@ -145,6 +186,13 @@ union VNCClientMessages {
 };
 
 union VNCServerMessages {
-    VNCFBUpdate           fbUpdate;
-    VNCSetColorMapHeader  fbColorMap;
+    VNCServerProto          protocol;
+    VNCServerAuthTypeList   authTypeList;
+    VNCServerAuthType       authType;
+    VNCServerAuthChallenge  authChallenge;
+    VNCServerAuthResult     authResult;
+    VNCServerInit           init;
+    VNCFBUpdate             fbUpdate;
+    VNCFBUpdateRect         fbUpdateRect;
+    VNCSetColorMapHeader    fbColorMap;
 };

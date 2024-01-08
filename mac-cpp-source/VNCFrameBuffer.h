@@ -1,5 +1,5 @@
 /****************************************************************************
- *   MiniVNC (c) 2022 Marcio Teixeira                                       *
+ *   MiniVNC (c) 2022-2024 Marcio Teixeira                                  *
  *                                                                          *
  *   This program is free software: you can redistribute it and/or modify   *
  *   it under the terms of the GNU General Public License as published by   *
@@ -29,7 +29,16 @@
     extern unsigned long fbDepth;
 #endif
 
+union ColorTableEntry {
+    VNCColor vncColor;
+    unsigned long packedColor;
+};
+
 extern BitMap vncBits;
+extern VNCPixelFormat fbPixFormat, pendingPixFormat;
+extern ColorTableEntry *ctColors;
+extern unsigned char  *fbUpdateBuffer;
+extern unsigned char ctBlack, ctWhite, cPixelBytes;
 
 class VNCFrameBuffer {
     public:
@@ -41,6 +50,8 @@ class VNCFrameBuffer {
         static unsigned char *getBaseAddr();
         static Boolean checkScreenResolution();
         static Boolean hasColorQuickdraw();
+        static void fbSyncTasks();
+        static void idleTask();
 
         static unsigned char *getPixelAddr(unsigned int x, unsigned int y) {
             #if !defined(VNC_BYTES_PER_LINE) && !defined(VNC_FB_BITS_PER_PIX)

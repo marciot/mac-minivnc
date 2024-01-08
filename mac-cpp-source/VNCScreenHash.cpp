@@ -1,5 +1,5 @@
 /****************************************************************************
- *   MiniVNC (c) 2022 Marcio Teixeira                                       *
+ *   MiniVNC (c) 2022-2024 Marcio Teixeira                                  *
  *                                                                          *
  *   This program is free software: you can redistribute it and/or modify   *
  *   it under the terms of the GNU General Public License as published by   *
@@ -20,7 +20,6 @@
 #include "VNCServer.h"
 #include "VNCFrameBuffer.h"
 #include "VNCScreenHash.h"
-#include "msgbuf.h"
 
 #ifdef VNC_BYTES_PER_LINE
     #define COL_HASH_SIZE ((VNC_BYTES_PER_LINE + sizeof(unsigned long) - 1)/sizeof(unsigned long))
@@ -108,9 +107,6 @@ OSErr VNCScreenHash::destroy() {
     return disposePersistentVBLTask(&evbl.vblTask);
 }
 
-#define min(a,b) ((a) < (b) ? (a) : (b))
-#define max(a,b) ((a) > (b) ? (a) : (b))
-
 void unionRect(const VNCRect *a,VNCRect *b) {
     if(b->w && b->h) {
         if(a->w && a->h) {
@@ -172,7 +168,7 @@ asm pascal void VNCScreenHash::preVBLTask() {
     dc.w    0x0000
 }
 
-Boolean VNCScreenHash::requestDirtyRect(int x, int y, int w, int h, HashCallbackPtr func) {
+OSErr VNCScreenHash::requestDirtyRect(int x, int y, int w, int h, HashCallbackPtr func) {
     if(callback == NULL) {
         evbl.vblTask.vblCount = 1;
 
@@ -191,7 +187,7 @@ Boolean VNCScreenHash::requestDirtyRect(int x, int y, int w, int h, HashCallback
 
         return VInstall((QElemPtr)&evbl.vblTask);
     }
-    return -999;
+    return requestAlreadyScheduled;
 }
 
 pascal void VNCScreenHash::myVBLTask(VBLTaskPtr theVBL) {

@@ -1,5 +1,5 @@
 /****************************************************************************
- *   MiniVNC (c) 2022 Marcio Teixeira                                       *
+ *   MiniVNC (c) 2022-2024 Marcio Teixeira                                  *
  *                                                                          *
  *   This program is free software: you can redistribute it and/or modify   *
  *   it under the terms of the GNU General Public License as published by   *
@@ -30,10 +30,11 @@ int ShowStatus(const char* format, ...);
 const unsigned long &ScrnBase = *(unsigned long*) 0x824;
 
 BitMap vncBits = {0};
-PixPatHandle deskPat;
+//PixPatHandle deskPat;
 
-VNCColor *ctColors = 0;
-unsigned long ctSeed = 10;
+ColorTableEntry *ctColors = 0;
+unsigned char ctBlack, ctWhite, cPixelBytes;
+unsigned long ctSeed;
 
 #ifndef VNC_FB_WIDTH
     unsigned int  fbStride;
@@ -44,9 +45,14 @@ unsigned long ctSeed = 10;
     unsigned long fbDepth;
 #endif
 
+VNCPixelFormat     pendingPixFormat;
+VNCPixelFormat     fbPixFormat;
+unsigned char   *fbUpdateBuffer;
+
 //unsigned long LMGetDeskHook() {return * (unsigned long*) 0xA6C;}
 
 OSErr VNCFrameBuffer::setup() {
+    ctSeed = 10;
     if(checkScreenResolution()) {
         vncBits.baseAddr = (Ptr) ScrnBase;
     }
@@ -68,18 +74,18 @@ OSErr VNCFrameBuffer::setup() {
     #endif
 
     const unsigned int paletteSize = 1 << fbDepth;
-    ctColors = (VNCColor*) NewPtr(sizeof(VNCColor) * paletteSize);
+    ctColors = (ColorTableEntry*) NewPtr(sizeof(VNCColor) * paletteSize);
     if (MemError() != noErr)
         return MemError();
 
     if(fbDepth == 1) {
         // Set up the monochrome palette
-        ctColors[0].red   = -1;
-        ctColors[0].green = -1;
-        ctColors[0].blue  = -1;
-        ctColors[1].red   = 0;
-        ctColors[1].green = 0;
-        ctColors[1].blue  = 0;
+        ctColors[0].vncColor.red   = -1;
+        ctColors[0].vncColor.green = -1;
+        ctColors[0].vncColor.blue  = -1;
+        ctColors[1].vncColor.red   = 0;
+        ctColors[1].vncColor.green = 0;
+        ctColors[1].vncColor.blue  = 0;
     }
 
     if(HasColorQD()) {
@@ -103,6 +109,7 @@ OSErr VNCFrameBuffer::destroy() {
     }
     if(ctColors) {
         DisposePtr((Ptr)ctColors);
+        ctColors = 0;
     }
     if(hasColorQD) {
         //SetDeskCPat(NULL);
@@ -134,17 +141,17 @@ Boolean VNCFrameBuffer::checkScreenResolution() {
     #if defined(VNC_FB_WIDTH) && defined(VNC_FB_HEIGHT) && defined(VNC_FB_BITS_PER_PIX)
         Boolean isMatch = gdWidth == VNC_FB_WIDTH && gdHeight == VNC_FB_HEIGHT && gdDepth == VNC_FB_BITS_PER_PIX;
         if(!isMatch) {
-            ShowStatus("This build of Mini VNC will only work at %d x %d with %d colors.", VNC_FB_WIDTH, VNC_FB_HEIGHT, VNC_FB_PALETTE_SIZE);
+            dprintf("-This build of Mini VNC will only work at %d x %d with %d colors.", VNC_FB_WIDTH, VNC_FB_HEIGHT, VNC_FB_PALETTE_SIZE);
         }
     #elif defined(VNC_FB_BITS_PER_PIX)
         Boolean isMatch = gdDepth == VNC_FB_BITS_PER_PIX;
         if(!isMatch) {
-            ShowStatus("This build of Mini VNC will only work with %d colors.", VNC_FB_PALETTE_SIZE);
+            dprintf("-This build of Mini VNC will only work with %d colors.", VNC_FB_PALETTE_SIZE);
         }
     #else
         Boolean isMatch = (gdDepth == 1) || (gdDepth == 2) || (gdDepth == 4) || (gdDepth == 8);
         if(!isMatch) {
-            ShowStatus("Please set your monitor to Black & White, 4, 16 or 256 grays or colors.");
+            dprintf("-Please set your monitor to Black & White, 4, 16 or 256 grays or colors.");
         }
     #endif
 
@@ -162,33 +169,116 @@ Boolean VNCFrameBuffer::checkScreenResolution() {
 }
 
 void VNCFrameBuffer::copy() {
-    if(!vncBits.baseAddr) return;
-
     #if defined(VNC_FB_MONOCHROME)
-        if(vncBits.baseAddr != (Ptr) ScrnBase) {
+        if(vncBits.baseAddr && vncBits.baseAddr != (Ptr) ScrnBase) {
             // We are on a color Mac, do a dithered copy
             CopyBits(&qd.screenBits, &vncBits, &vncBits.bounds, &vncBits.bounds, srcCopy, NULL);
         }
-    #else
+    #endif
+}
+
+void VNCFrameBuffer::idleTask() {
+    #if !defined(VNC_FB_MONOCHROME)
         if(hasColorQD) {
-            #ifdef VNC_FB_BITS_PER_PIX
-                const unsigned char fbDepth = VNC_FB_BITS_PER_PIX;
-            #endif
-            const unsigned int paletteSize = 1 << fbDepth;
-            // Update the color table if needed
+            // Find the color table associated with the device
             GDHandle gdh = GetMainDevice();
             PixMapHandle gpx = (*gdh)->gdPMap;
             CTabHandle gct = (*gpx)->pmTable;
-            if(gct && ((*gct)->ctSeed != ctSeed) && (paletteSize == (*gct)->ctSize + 1)) {
-                for(int i = 0; i < paletteSize; i++) {
-                    ctColors[i].red   = (*gct)->ctTable[i].rgb.red;
-                    ctColors[i].green = (*gct)->ctTable[i].rgb.green;
-                    ctColors[i].blue  = (*gct)->ctTable[i].rgb.blue;
-                }
-                ctSeed = (*gct)->ctSeed;
-                fbColorMapNeedsUpdate = true;
+
+            // If the color table has changed, inform the interrupt routine
+            if(gct && (*gct)->ctSeed != ctSeed) {
+                vncFlags.fbColorMapNeedsUpdate = true;
             }
         }
+    #endif
+}
+
+void VNCFrameBuffer::fbSyncTasks() {
+    #if !defined(VNC_FB_MONOCHROME)
+        if(!vncBits.baseAddr) return;
+        if(!hasColorQD) return;
+
+        // Handle any changes to the pixel format
+
+        if (pendingPixFormat.bitsPerPixel) {
+            memcpy(&fbPixFormat, &pendingPixFormat, sizeof(VNCPixelFormat));
+            pendingPixFormat.bitsPerPixel = 0;
+            cPixelBytes = fbPixFormat.bitsPerPixel / 8;
+
+            // Determine representation of CPIXEL
+
+            const unsigned long colorBits = ((unsigned long)fbPixFormat.redMax   << fbPixFormat.redShift) |
+                                            ((unsigned long)fbPixFormat.greenMax << fbPixFormat.greenShift) |
+                                            ((unsigned long)fbPixFormat.blueMax  << fbPixFormat.blueShift);
+
+            if((fbPixFormat.bitsPerPixel == 32) && (colorBits == 0x00FFFFFF)) {
+                cPixelBytes = 3;
+            } else {
+                cPixelBytes = fbPixFormat.bitsPerPixel / 8;
+            }
+
+            dprintf("Bytes per CPIXEL %d (ColorBits: %lx)\n", cPixelBytes, colorBits);
+
+            vncFlags.fbColorMapNeedsUpdate = true;
+        }
+
+        // Handle any changes to the color palette
+
+        if (vncFlags.fbColorMapNeedsUpdate) {
+            // Find the color table associated with the device
+            GDHandle gdh = GetMainDevice();
+            PixMapHandle gpx = (*gdh)->gdPMap;
+            CTabHandle gct = (*gpx)->pmTable;
+            if(gct) {
+                #ifdef VNC_FB_BITS_PER_PIX
+                    const unsigned char fbDepth = VNC_FB_BITS_PER_PIX;
+                #endif
+                const unsigned int paletteSize = 1 << fbDepth;
+
+                if(paletteSize == ((*gct)->ctSize + 1)) {
+                    // Store a copy of the indexed color table so that
+                    // the interrupt routine can find it
+                    for(int i = 0; i < paletteSize; i++) {
+                        const RGBColor &src = (*gct)->ctTable[i].rgb;
+                        if(fbPixFormat.trueColor) {
+                            unsigned long r = ((unsigned long)src.red)   * fbPixFormat.redMax   / 0xFFFF;
+                            unsigned long g = ((unsigned long)src.green) * fbPixFormat.greenMax / 0xFFFF;
+                            unsigned long b = ((unsigned long)src.blue)  * fbPixFormat.blueMax  / 0xFFFF;
+                            unsigned long color = (r << fbPixFormat.redShift) | (g << fbPixFormat.greenShift) | (b << fbPixFormat.blueShift);
+                            if(fbPixFormat.bigEndian) {
+                                ctColors[i].packedColor = color <<= (sizeof(unsigned long) - cPixelBytes) * 8;
+                            } else {
+                                ctColors[i].packedColor = ((color & 0x000000ff) << 24u) |
+                                                          ((color & 0x0000ff00) << 8u)  |
+                                                          ((color & 0x00ff0000) >> 8u)  |
+                                                          ((color & 0xff000000) >> 24u);
+                            }
+                        } else {
+                            ctColors[i].vncColor.red   = src.red;
+                            ctColors[i].vncColor.green = src.green;
+                            ctColors[i].vncColor.blue  = src.blue;
+                        }
+                    }
+                    ctSeed = (*gct)->ctSeed;
+
+                    // Grab the white and black indices
+                    GrafPtr savedPort;
+                    GetPort (&savedPort);
+                    CGrafPort cPort;
+                    OpenCPort(&cPort);
+                    ctBlack = cPort.fgColor;
+                    ctWhite = cPort.bkColor;
+                    CloseCPort(&cPort);
+                    SetPort(savedPort);
+
+                    dprintf("Color palette ready (size:%d b:%d w:%d)\n", paletteSize, ctBlack, ctWhite);
+                } else {
+                    dprintf("Palette size mismatch!\n");
+                }
+            } else {
+                dprintf("Failed to get graphics device!\n");
+            }
+        } // vncFlags.fbColorMapNeedsUpdate
     #endif
 }
 
@@ -197,5 +287,5 @@ unsigned char *VNCFrameBuffer::getBaseAddr() {
 }
 
 VNCColor *VNCFrameBuffer::getPalette() {
-    return ctColors;
+    return (VNCColor*) ctColors;
 }

@@ -20,13 +20,13 @@
 #include "MacTCP.h"
 #include "VNCEncoder.h"
 
-class VNCEncodeTRLE {
+class VNCEncodeRaw {
     public:
         static Size minBufferSize();
 
         static int begin();
         static Boolean getChunk(int x, int y, int w, int h, wdsEntry *wds);
 
-        static long getEncoding() {return mTRLEEncoding;}
+        static long getEncoding() {return mRawEncoding;}
 };
 

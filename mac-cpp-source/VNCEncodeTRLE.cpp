@@ -1,5 +1,5 @@
 /****************************************************************************
- *   MiniVNC (c) 2022 Marcio Teixeira                                       *
+ *   MiniVNC (c) 2022-2024 Marcio Teixeira                                  *
  *                                                                          *
  *   This program is free software: you can redistribute it and/or modify   *
  *   it under the terms of the GNU General Public License as published by   *
@@ -64,8 +64,8 @@
 
 int              tile_x, tile_y;
 unsigned char    lastPaletteSize;
-unsigned char   *fbUpdateBuffer = 0;
 
+#define TileRaw        0
 #define TileSolid      1
 #define Tile2Color     2
 #define TileReuse    127
@@ -83,7 +83,7 @@ unsigned char   *fbUpdateBuffer = 0;
     #define TILE_MAX_SIZE   (PLAIN_PACKED_TILE_SIZE(fbDepth))
 #endif
 
-OSErr VNCEncoder::setup() {
+Size VNCEncodeTRLE::minBufferSize() {
     #ifdef VNC_FB_BITS_PER_PIX
         const unsigned char fbDepth = VNC_FB_BITS_PER_PIX;
     #endif
@@ -93,25 +93,17 @@ OSErr VNCEncoder::setup() {
         const unsigned long tilesPerRow = fbWidth / 16;
     #endif
     #if defined(VNC_FB_MONOCHROME) || defined(USE_FAST_MONO_ENCODER)
-        fbUpdateBuffer = (unsigned char*) NewPtr(tilesPerRow * PLAIN_PACKED_TILE_SIZE(1));
+        return tilesPerRow * PLAIN_PACKED_TILE_SIZE(1);
     #else
-        fbUpdateBuffer = (unsigned char*) NewPtr(UPDATE_BUFFER_SIZE);
+        return UPDATE_BUFFER_SIZE;
     #endif
-    if (MemError() != noErr)
-        return MemError();
-    return noErr;
 }
 
-OSErr VNCEncoder::destroy() {
-    DisposPtr((Ptr)fbUpdateBuffer);
-    fbUpdateBuffer = NULL;
-    return MemError();
-}
-
-void VNCEncoder::begin() {
+int VNCEncodeTRLE::begin() {
     tile_x = 0;
     tile_y = 0;
     lastPaletteSize = 0;
+    return EncoderOk;
 }
 
 #if !defined(VNC_FB_MONOCHROME)
@@ -1145,7 +1137,7 @@ void VNCEncoder::begin() {
 
             movea.l 8(a6),src           // Load the src ptr into A0
             movea.l 12(a6),dst          // Load the dst ptr into A1
-            clr.w   rows                // Load rows into D2
+            clr.w   rows                // Load rows into D0
             move.b  18(a6),rows
 
             movea.l  dst,start
@@ -1372,11 +1364,9 @@ void VNCEncoder::begin() {
             return len;
         }
 
-        #define min(A,B) ((A) < (B) ? (A) : (B))
-
         asm Boolean getChunkMonochrome(int x, int y, int w, int h, wdsEntry *wdsPtr);
 
-        Boolean VNCEncoder::getChunk(int x, int y, int w, int h, wdsEntry *wds) {
+        Boolean VNCEncodeTRLE::getChunk(int x, int y, int w, int h, wdsEntry *wds) {
             #ifdef USE_FAST_MONO_ENCODER
                 if(fbDepth == 1) return getChunkMonochrome(x,y,w,h,wds);
             #endif

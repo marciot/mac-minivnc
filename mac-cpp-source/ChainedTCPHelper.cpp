@@ -1,5 +1,5 @@
 /****************************************************************************
- *   MiniVNC (c) 2022 Marcio Teixeira                                       *
+ *   MiniVNC (c) 2022-2024 Marcio Teixeira                                  *
  *                                                                          *
  *   This program is free software: you can redistribute it and/or modify   *
  *   it under the terms of the GNU General Public License as published by   *
@@ -149,6 +149,13 @@ void ChainedTCPHelper::send(TCPiopb *pBlock, StreamPtr streamPtr, wdsEntry data[
     pBlock->csParam.send.pushFlag = push;
     pBlock->csParam.send.urgentFlag = urgent;
     pBlock->csParam.send.wdsPtr = (Ptr) data;
+    PBControl((ParmBlkPtr)pBlock,true);
+}
+
+void ChainedTCPHelper::status(TCPiopb *pBlock, StreamPtr streamPtr) {
+    pBlock->csCode = TCPStatus;
+    pBlock->ioResult = 1;
+    pBlock->tcpStream = streamPtr;
     PBControl((ParmBlkPtr)pBlock,true);
 }
 

@@ -20,13 +20,19 @@
 #include "MacTCP.h"
 #include "VNCEncoder.h"
 
-class VNCEncodeTRLE {
+#define TileRaw        0
+#define TileSolid      1
+#define Tile2Color     2
+#define TilePlainRLE 128
+
+class VNCEncodeZRLE {
     public:
-        static Size minBufferSize();
+		static Size minBufferSize();
 
         static int begin();
-        static Boolean getChunk(int x, int y, int w, int h, wdsEntry *wds);
+		static void doIdle();
+        static Boolean getChunk(int x, int y, int w, int h, unsigned char *&ptr, unsigned long &length);
 
-        static long getEncoding() {return mTRLEEncoding;}
+        static long getEncoding() {return 6;}
 };
 

@@ -1,5 +1,5 @@
 /****************************************************************************
- *   MiniVNC (c) 2022 Marcio Teixeira                                       *
+ *   MiniVNC (c) 2022-2024 Marcio Teixeira                                  *
  *                                                                          *
  *   This program is free software: you can redistribute it and/or modify   *
  *   it under the terms of the GNU General Public License as published by   *
@@ -55,6 +55,8 @@ class ChainedTCPHelper {
 
         static void receiveNoCopy(TCPiopb *pBlock, StreamPtr streamPtr, rdsEntry data[], unsigned short numRds, Byte timeout = 0);
         static void receiveReturnBuffers(TCPiopb *pBlock);
+
+        static void status(TCPiopb *pBlock, StreamPtr streamPtr);
 
         static void then(TCPiopb *pBlock, TCPCompletionPtr proc);
 };
