@@ -29,7 +29,7 @@ void VNCEncodeCursor::clear() {
 }
 
 Size VNCEncodeCursor::minBufferSize() {
-    return 0;
+    return sizeof(VNCFBUpdateRect) + 16 * 16 * 4 + 32;
 }
 
 Boolean VNCEncodeCursor::needsUpdate() {

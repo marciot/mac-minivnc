@@ -31,7 +31,9 @@
 #include "msgbuf.h"
 
 #define VNC_DEBUG
-//#define POLL_CONNECTION_STATUS
+
+#define POLL_CONNECTION_STATUS 0 // Experimental
+#define USE_NOTIFY_PROC        0 // Experimental
 
 #define kNumRDS      5       /* Larger numbers increase read performance */
 #define kBufSize     16384   /* Size for TCP stream buffer and receive buffer */
@@ -39,7 +41,8 @@
 
 static asm void PreCompletion(TCPiopb *pb);
 
-Boolean tcpSuccess(TCPiopb *pb);
+Boolean _tcpSuccess(TCPiopb *pb, unsigned int line);
+#define tcpSuccess(A) _tcpSuccess(A,__LINE__)
 
 pascal void tcpStreamCreated(TCPiopb *pb);
 pascal void tcpStreamClosed(TCPiopb *pb);
@@ -71,8 +74,8 @@ void vncFBUpdateRequest(const VNCFBUpdateReq &);
 void vncSendFBUpdate(Boolean incremental);
 
 pascal void vncGotDirtyRect(int x, int y, int w, int h);
-pascal void vncSendFBUpdateColorMap(TCPiopb *pb);
-pascal void vncPrepareForFBUpdate(TCPiopb *pb);
+pascal void vncPrepareForFBUpdate();
+pascal void vncSendFBUpdateColorMap();
 pascal void vncSendFBUpdateHeader(TCPiopb *pb);
 pascal void vncFBUpdateEncodeCursor(TCPiopb *pb);
 pascal void vncStartFBUpdate(TCPiopb *pb);
@@ -147,6 +150,32 @@ VNCFlags vncFlags = {
     false, // forceVNCAuth
 };
 
+#if USE_NOTIFY_PROC
+    pascal void vncNotifyProc(StreamPtr tcpStream, unsigned short eventCode, Ptr userDataPtr, unsigned short terminReason, struct ICMPReport *icmpMsg);
+    pascal void vncNotifyProc(StreamPtr tcpStream, unsigned short eventCode, Ptr userDataPtr, unsigned short terminReason, struct ICMPReport *icmpMsg) {
+        switch(eventCode) {
+            case TCPClosing:    dprintf("ASR: TCPClosing\n"); break;
+            case TCPULPTimeout: dprintf("ASR: TCPULPTimeout\n"); break;
+            case TCPTerminate:
+                switch(terminReason) {
+                    case TCPRemoteAbort:         dprintf("ASR: TCPRemoteAbort\n"); break;
+                    case TCPULPTimeoutTerminate: dprintf("ASR: TCPULPTimeoutTerminate\n"); break;
+                    case TCPULPAbort:            dprintf("ASR: TCPRemoteAbort\n"); break;
+                    case TCPULPClose:            dprintf("ASR: TCPULPClose\n"); break;
+                    default:
+                        dprintf("ASR: terminReason %d\n", terminReason);
+                }
+                break;
+            case TCPDataArrival: break;
+            case TCPUrgent: break;
+            case TCPICMPReceived: break;
+        }
+    }
+    #define kNotifyProc vncNotifyProc
+#else
+    #define kNotifyProc nil
+#endif
+
 OSErr vncServerStart() {
     VNCKeyboard::Setup();
 
@@ -172,7 +201,7 @@ OSErr vncServerStart() {
     if(vncError != noErr) return vncError;
 
     tcp.then(&epb_recv.pb, tcpStreamCreated);
-    tcp.createStream(&epb_recv.pb, recvBuffer, kBufSize);
+    tcp.createStream(&epb_recv.pb, recvBuffer, kBufSize, kNotifyProc);
 
     // Set the forceVNCAuth to the default
     vncFlags.forceVNCAuth = vncConfig.forceVNCAuth;
@@ -213,15 +242,29 @@ OSErr vncServerError() {
     }
 }
 
-Boolean tcpSuccess(TCPiopb *pb) {
+Boolean _tcpSuccess(TCPiopb *pb, unsigned int line) {
     OSErr err = tcp.getResult(pb);
     if(err != noErr) {
-        if(err == connectionClosing) {
-            if(vncConfig.autoRestart) {
-                tcp.then(&epb_recv.pb, tcpStreamCreated);
-                tcp.abort(&epb_recv.pb, stream);
-                return false;
-            }
+        dprintf("macTCP error on line %d: ", line);
+        switch(err) {
+            case connectionClosing:
+                dprintf("connectionClosing\n");
+                if(vncConfig.autoRestart) {
+                    if(pb == &epb_recv.pb) {
+                        tcp.then(&epb_recv.pb, tcpStreamCreated);
+                        tcp.abort(&epb_recv.pb, stream);
+                    }
+                    return false;
+                }
+                break;
+            case connectionTerminated:
+                dprintf("connectionTerminated\n");
+                break;
+            case commandTimeout:
+                dprintf("commandTimeout\n");
+                break;
+            default:
+                dprintf(" %d\n",err);
         }
         vncState = VNC_ERROR;
         if(vncError == noErr) {
@@ -456,11 +499,11 @@ pascal void tcpSendServerInit(TCPiopb *pb) {
         VNCEncodeCursor::clear();
 
         dprintf("Session name: %s [ResEdit]\n", vncConfig.sessionName);
-        vncServerMessage.init.nameLength = strlen(vncConfig.sessionName);
+        vncServerMessage.init.nameLength = min(sizeof(vncServerMessage.init.name), strlen(vncConfig.sessionName));
         strncpy(vncServerMessage.init.name, vncConfig.sessionName, vncServerMessage.init.nameLength);
 
         myWDS[0].ptr = (Ptr) &vncServerMessage.init;
-        myWDS[0].length = sizeof(vncServerMessage.init);
+        myWDS[0].length = sizeof(vncServerMessage.init) - sizeof(vncServerMessage.init.name) + vncServerMessage.init.nameLength;
 
         // Set the forceVNCAuth to the default
         vncFlags.forceVNCAuth = vncConfig.forceVNCAuth;
@@ -732,7 +775,7 @@ pascal void vncGotDirtyRect(int x, int y, int w, int h) {
         fbUpdateRect.y = y;
         fbUpdateRect.w = w;
         fbUpdateRect.h = h;
-        vncPrepareForFBUpdate(&epb_send.pb);
+        vncPrepareForFBUpdate();
     }
 }
 
@@ -752,11 +795,11 @@ void vncSendFBUpdate(Boolean incremental) {
             vncError = err;
         }
     } else {
-        vncPrepareForFBUpdate(&epb_send.pb);
+        vncPrepareForFBUpdate();
     }
 }
 
-pascal void vncPrepareForFBUpdate(TCPiopb *pb) {
+pascal void vncPrepareForFBUpdate() {
     fbUpdateStartTicks = TickCount();
     vncFlags.fbUpdateInProgress = true;
     vncFlags.fbUpdatePending = false;
@@ -783,7 +826,7 @@ pascal void vncPrepareForFBUpdate(TCPiopb *pb) {
     switch (VNCEncoder::begin()) {
         case EncoderOk:
             if (!needDefer) {
-                vncSendFBUpdateColorMap(pb);
+                vncSendFBUpdateColorMap();
                 break;
             }
             // Intentional fall-thru
@@ -800,15 +843,18 @@ pascal void vncPrepareForFBUpdate(TCPiopb *pb) {
 }
 
 pascal void vncFBSyncTasksDone() {
-    vncSendFBUpdateColorMap(&epb_send.pb);
+    vncSendFBUpdateColorMap();
 }
 
-pascal void vncSendFBUpdateColorMap(TCPiopb *pb) {
+pascal void vncSendFBUpdateColorMap() {
+    TCPiopb *pb = &epb_send.pb;
+
     vncFlags.fbUpdateInProgress = true;
     vncFlags.fbUpdatePending = false;
 
     if(fbPixFormat.trueColor || !vncFlags.fbColorMapNeedsUpdate) {
         vncFlags.fbColorMapNeedsUpdate = false;
+        tcp.clearError(pb);
         vncSendFBUpdateHeader(pb);
         return;
     }
@@ -838,24 +884,26 @@ pascal void vncSendFBUpdateColorMap(TCPiopb *pb) {
 }
 
 pascal void vncSendFBUpdateHeader(TCPiopb *pb) {
-    // Send the header
-    myWDS[0].ptr = (Ptr) &vncServerMessage;
-    myWDS[0].length = sizeof(VNCFBUpdate);
-    myWDS[1].ptr = 0;
-    myWDS[1].length = 0;
+    if (tcpSuccess(pb)) {
+        // Send the header
+        myWDS[0].ptr = (Ptr) &vncServerMessage;
+        myWDS[0].length = sizeof(VNCFBUpdate);
+        myWDS[1].ptr = 0;
+        myWDS[1].length = 0;
 
-    vncServerMessage.fbUpdate.message = mFBUpdate;
-    vncServerMessage.fbUpdate.padding = 0;
-    if(vncFlags.clientTakesCursor && VNCEncodeCursor::needsUpdate()) {
-        // If we have a cursor update pending, we send two rects, a
-        // pseudo-encoding for the cursor, followed by the screen update
-        vncServerMessage.fbUpdate.numRects = 2;
-        tcp.then(pb, vncFBUpdateEncodeCursor);
-    } else {
-        vncServerMessage.fbUpdate.numRects = 1;
-        tcp.then(pb, vncStartFBUpdate);
+        vncServerMessage.fbUpdate.message = mFBUpdate;
+        vncServerMessage.fbUpdate.padding = 0;
+        if(vncFlags.clientTakesCursor && VNCEncodeCursor::needsUpdate()) {
+            // If we have a cursor update pending, we send two rects, a
+            // pseudo-encoding for the cursor, followed by the screen update
+            vncServerMessage.fbUpdate.numRects = 2;
+            tcp.then(pb, vncFBUpdateEncodeCursor);
+        } else {
+            vncServerMessage.fbUpdate.numRects = 1;
+            tcp.then(pb, vncStartFBUpdate);
+        }
+        tcp.send(pb, stream, myWDS, kTimeOut, false);
     }
-    tcp.send(pb, stream, myWDS, kTimeOut, false);
 }
 
 pascal void vncFBUpdateEncodeCursor(TCPiopb *pb) {
@@ -915,7 +963,7 @@ pascal void vncFinishFBUpdate(TCPiopb *pb) {
         vncSendFBUpdate(true);
     }
 
-#ifdef POLL_CONNECTION_STATUS
+#if POLL_CONNECTION_STATUS
     else {
         tcp.then(pb, vncStatusAvailable);
         tcp.status(pb, stream);
@@ -923,7 +971,7 @@ pascal void vncFinishFBUpdate(TCPiopb *pb) {
 #endif
 }
 
-#ifdef POLL_CONNECTION_STATUS
+#if POLL_CONNECTION_STATUS
     pascal void vncStatusAvailable(TCPiopb *pb) {
         if (tcpSuccess(pb)) {
             const unsigned char *ip = (unsigned char *)&pb->csParam.status.remoteHost;

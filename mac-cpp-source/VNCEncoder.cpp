@@ -28,9 +28,14 @@
 #include "msgbuf.h"
 
 #define MINIZ_NO_ARCHIVE_APIS
+#define MINIZ_NO_ARCHIVE_WRITING_APIS
 #define MINIZ_NO_TIME
-//#define MINIZ_NO_ZLIB_APIS
+#define MINIZ_NO_ZLIB_APIS
 #define MINIZ_NO_MALLOC
+#define MINIZ_USE_UNALIGNED_LOADS_AND_STORES 1
+#define MINIZ_LITTLE_ENDIAN 0
+#define MINIZ_HAS_64BIT_REGISTERS 0
+#define MINIZ_HAS_64BIT_INTEGERS 0
 
 #include "miniz.h"
 
@@ -49,7 +54,10 @@ unsigned char selectedEncoder = -1, lastSelectedEncoder = -1;
 
 OSErr VNCEncoder::setup() {
     #if defined(VNC_FB_MONOCHROME)
-        const Size bSize = VNCEncodeTRLE::minBufferSize();
+        const Size bSize = max(
+            VNCEncodeTRLE::minBufferSize(),
+            VNCEncodeCursor::minBufferSize()
+        );
     #else
         const Size bSize = max(
             VNCEncodeRaw::minBufferSize(),
@@ -85,14 +93,18 @@ void VNCEncoder::clear() {
     vncFlags.clientTakesZRLE    = false;
     vncFlags.clientTakesCursor  = false;
     selectedEncoder = -1;
+    #if !defined(VNC_FB_MONOCHROME)
     compressReset();
+    #endif
 }
 
 int VNCEncoder::begin() {
     // Select the most appropriate encoder
 
     #if defined(VNC_FB_MONOCHROME)
-        selectedEncoder = mTRLEEncoding;
+        if (vncFlags.clientTakesTRLE && !fbPixFormat.trueColor) {
+            selectedEncoder = mTRLEEncoding;
+        }
     #else
         if (vncConfig.allowZRLE && vncFlags.clientTakesZRLE) {
             selectedEncoder = mZRLEEncoding;
@@ -102,22 +114,25 @@ int VNCEncoder::begin() {
         else if (vncConfig.allowHextile && vncFlags.clientTakesHextile) {
             selectedEncoder = mHextileEncoding;
         }
-        else if (vncConfig.allowRaw && vncFlags.clientTakesRaw && !fbPixFormat.trueColor) {
-            dprintf("No suitable encoding found!\n");
-            lastSelectedEncoder = -1;
-            return false;
+        else if (vncConfig.allowRaw && vncFlags.clientTakesRaw && (!fbPixFormat.trueColor) && (fbDepth == 8)) {
+            selectedEncoder = mRawEncoding;
         }
     #endif
+        else {
+            dprintf("No suitable encoding found!\n");
+            selectedEncoder = lastSelectedEncoder = -1;
+            return false;
+        }
 
     if(lastSelectedEncoder != selectedEncoder) {
         lastSelectedEncoder = selectedEncoder;
         dprintf("Will use %s for updates\n", getEncoderName(selectedEncoder));
     }
 
-    int status;
     #if defined(VNC_FB_MONOCHROME)
-        status = VNCEncodeTRLE::begin();
+        return VNCEncodeTRLE::begin();
     #else
+        int status;
         switch(selectedEncoder) {
             case mTRLEEncoding:    status = VNCEncodeTRLE::begin(); break;
             case mRawEncoding:     status = VNCEncodeRaw::begin(); break;
@@ -126,16 +141,16 @@ int VNCEncoder::begin() {
             case mZRLEEncoding:    status = VNCEncodeZRLE::begin(); break;
             default:               status = VNCEncodeRaw::begin(); break;
         }
-    #endif
 
-    if(status == EncoderNeedsCompression) {
-        if((s_outbuf == NULL) || (g_deflator == NULL)) {
-            status = EncoderDefer;
-        } else {
-            status = EncoderOk;
+        if(status == EncoderNeedsCompression) {
+            if((s_outbuf == NULL) || (g_deflator == NULL)) {
+                status = EncoderDefer;
+            } else {
+                status = EncoderOk;
+            }
         }
-    }
-    return status;
+        return status;
+    #endif
 }
 
 Boolean VNCEncoder::getChunk(int x, int y, int w, int h, wdsEntry *wds) {
@@ -208,6 +223,7 @@ void VNCEncoder::compressReset() {
 }
 
 void VNCEncoder::fbSyncTasks() {
+    #if !defined(VNC_FB_MONOCHROME)
     if(selectedEncoder == mZRLEEncoding) {
         if(s_outbuf == NULL) {
             dprintf("Allocated %ld bytes for ZLib output buffer\n", COMP_OUT_BUF_SIZE);
@@ -227,6 +243,7 @@ void VNCEncoder::fbSyncTasks() {
             compressReset();
         }
     }
+    #endif
 }
 
 Boolean VNCEncoder::getCompressedChunk(wdsEntry *wds) {

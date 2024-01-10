@@ -38,7 +38,7 @@ class ChainedTCPHelper {
 
         static OSErr begin(TCPiopb *pBlock);
 
-        static void createStream(TCPiopb *pBlock, Ptr recvPtr, unsigned short recvLen);
+        static void createStream(TCPiopb *pBlock, Ptr recvPtr, unsigned short recvLen, TCPNotifyProcPtr notifyProc);
 
         static void openConnection(TCPiopb *pBlock, StreamPtr streamPtr, ip_addr remoteHost, tcp_port remotePort, Byte timeout = kTimeOut);
         static void waitForConnection(TCPiopb *pBlock, StreamPtr streamPtr, Byte timeout, tcp_port localPort, ip_addr remoteHost = 0, tcp_port remotePort = 0);

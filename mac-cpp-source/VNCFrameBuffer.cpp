@@ -86,6 +86,8 @@ OSErr VNCFrameBuffer::setup() {
         ctColors[1].vncColor.red   = 0;
         ctColors[1].vncColor.green = 0;
         ctColors[1].vncColor.blue  = 0;
+        ctBlack = 1;
+        ctWhite = 0;
     }
 
     if(HasColorQD()) {
@@ -194,9 +196,9 @@ void VNCFrameBuffer::idleTask() {
 }
 
 void VNCFrameBuffer::fbSyncTasks() {
+    if(!vncBits.baseAddr) return;
+
     #if !defined(VNC_FB_MONOCHROME)
-        if(!vncBits.baseAddr) return;
-        if(!hasColorQD) return;
 
         // Handle any changes to the pixel format
 
@@ -205,22 +207,24 @@ void VNCFrameBuffer::fbSyncTasks() {
             pendingPixFormat.bitsPerPixel = 0;
             cPixelBytes = fbPixFormat.bitsPerPixel / 8;
 
-            // Determine representation of CPIXEL
+            if(fbPixFormat.trueColor) {
+                // Determine representation of CPIXEL
 
-            const unsigned long colorBits = ((unsigned long)fbPixFormat.redMax   << fbPixFormat.redShift) |
-                                            ((unsigned long)fbPixFormat.greenMax << fbPixFormat.greenShift) |
-                                            ((unsigned long)fbPixFormat.blueMax  << fbPixFormat.blueShift);
+                const unsigned long colorBits = ((unsigned long)fbPixFormat.redMax   << fbPixFormat.redShift) |
+                                                ((unsigned long)fbPixFormat.greenMax << fbPixFormat.greenShift) |
+                                                ((unsigned long)fbPixFormat.blueMax  << fbPixFormat.blueShift);
 
-            if((fbPixFormat.bitsPerPixel == 32) && (colorBits == 0x00FFFFFF)) {
-                cPixelBytes = 3;
-            } else {
-                cPixelBytes = fbPixFormat.bitsPerPixel / 8;
+                if((fbPixFormat.bitsPerPixel == 32) && (colorBits == 0x00FFFFFF)) {
+                    cPixelBytes = 3;
+                }
+
+                dprintf("Bytes per CPIXEL %d (ColorBits: %lx)\n", cPixelBytes, colorBits);
             }
-
-            dprintf("Bytes per CPIXEL %d (ColorBits: %lx)\n", cPixelBytes, colorBits);
 
             vncFlags.fbColorMapNeedsUpdate = true;
         }
+
+        if(!hasColorQD) return;
 
         // Handle any changes to the color palette
 

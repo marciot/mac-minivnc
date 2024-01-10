@@ -295,6 +295,16 @@ void RefreshServerSettings() {
     ControlHandle hTRLE    = FindCHndl(gOptions,iTRLE);
     ControlHandle hZRLE    = FindCHndl(gOptions,iZRLE);
 
+    #if defined(VNC_FB_MONOCHROME)
+        HiliteControl  (hRaw,     255);
+        HiliteControl  (hHexTile, 255);
+        HiliteControl  (hTRLE,    0);
+        HiliteControl  (hZRLE,    255);
+        SetControlValue(hRaw,     0);
+        SetControlValue(hHexTile, 0);
+        SetControlValue(hTRLE,    1);
+        SetControlValue(hZRLE,    0);
+    #else
     if(vncServerActive()) {
         HiliteControl  (hRaw,     vncFlags.clientTakesRaw     ? 0 : 255);
         HiliteControl  (hHexTile, vncFlags.clientTakesHextile ? 0 : 255);
@@ -312,6 +322,7 @@ void RefreshServerSettings() {
         SetControlValue(hTRLE,    vncConfig.allowTRLE);
         SetControlValue(hZRLE,    vncConfig.allowZRLE);
     }
+    #endif
 
     SetControlValue(FindCHndl(gOptions,iGraphics),    vncConfig.allowStreaming);
     SetControlValue(FindCHndl(gOptions,iIncremental), vncConfig.allowIncremental);
