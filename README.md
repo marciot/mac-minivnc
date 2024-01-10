@@ -29,7 +29,7 @@ Here are the server capabilities:
 
 | Server               | OS      | TRLE  | ZRLE    | Hextile | Notes                             |
 |----------------------|---------|-------|---------|---------|-----------------------------------|
-| [MiniVNC v1.1]       | macOS 7 | Yes   |  Yes    |  Yes    | Comptible with all tested clients |
+| [MiniVNC v1.2]       | macOS 7 | Yes   |  Yes    |  Yes    | Comptible with all tested clients |
 | [MiniVNC v0.9]       | macOS 7 | Yes   |  No     |  No     | Only works with RealVNC Viewer    | 
 
 Here are the client capabilities:
@@ -37,10 +37,10 @@ Here are the client capabilities:
 | Client               | OS      | TRLE  | ZRLE    | Hextile | Palette | Notes                    |
 |----------------------|---------|-------|---------|---------|---------|--------------------------|
 | [RealVNC Viewer]     | Windows | Yes   |  Yes    |  Yes    |  Yes    | Only viewer for B&W Macs |
-| [TightVNC]           | Windows | No    |  Yes    |  Yes    |  No     | Requires MiniVNC 1.1     |
-| [MacVNC]             | macOS 7 | No    |  No     |  Yes    |  No     | Requires MiniVNC 1.1     |
-| [VNCThing 2.2]       | macOS 8 | No    |  No     |  Yes    |  No     | Requires MiniVNC 1.1     |
-| Screen Sharing       | macOS X | No    |  Yes    |  No     |  No     | Requires MiniVNC 1.1     |
+| [TightVNC]           | Windows | No    |  Yes    |  Yes    |  No     | Requires MiniVNC 1.2+    |
+| [MacVNC]             | macOS 7 | No    |  No     |  Yes    |  No     | Requires MiniVNC 1.2+    |
+| [VNCThing 2.2]       | macOS 8 | No    |  No     |  Yes    |  No     | Requires MiniVNC 1.2+    |
+| Screen Sharing       | macOS X | No    |  Yes    |  No     |  No     | Requires MiniVNC 1.2+    |
 
 MiniVNC is built on MacTCP and requires System 7, but it will
 operate on later Macs using Open Transport. MiniVNC has been
@@ -53,7 +53,7 @@ Ethernet port.
 [VNCThing 2.2]:https://web.archive.org/web/20010813214257/http://www.webthing.net/vncthing
 [MacVNC]:https://macintoshgarden.org/apps/vnc-viewer-fat
 [MiniVNC v0.9]:https://github.com/marciot/mac-minivnc/releases/tag/v0.9-beta-march-19
-[MiniVNC v1.1]:https://github.com/marciot/mac-minivnc/releases/tag/v1.1-beta-jan-8-2024
+[MiniVNC v1.2]:https://github.com/marciot/mac-minivnc/releases/tag/v1.2-beta-jan-10-2024
 
 Sponsorship Perks
 -----------------
