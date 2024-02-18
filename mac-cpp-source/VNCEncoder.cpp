@@ -20,6 +20,7 @@
 #include "VNCTypes.h"
 #include "VNCServer.h"
 #include "VNCFrameBuffer.h"
+#include "VNCPalette.h"
 #include "VNCEncodeRaw.h"
 #include "VNCEncodeHextile.h"
 #include "VNCEncodeTRLE.h"
@@ -99,16 +100,18 @@ void VNCEncoder::clear() {
 }
 
 int VNCEncoder::begin() {
+    VNCPalette::preparePaletteRoutines();
+
     // Select the most appropriate encoder
 
     #if defined(VNC_FB_MONOCHROME)
-        if (vncFlags.clientTakesTRLE && !fbPixFormat.trueColor) {
+        if (vncFlags.clientTakesTRLE && (!fbPixFormat.trueColor)) {
             selectedEncoder = mTRLEEncoding;
         }
     #else
         if (vncConfig.allowZRLE && vncFlags.clientTakesZRLE) {
             selectedEncoder = mZRLEEncoding;
-        } else if (vncConfig.allowTRLE && vncFlags.clientTakesTRLE && !fbPixFormat.trueColor) {
+        } else if (vncConfig.allowTRLE && vncFlags.clientTakesTRLE) {
             selectedEncoder = mTRLEEncoding;
         }
         else if (vncConfig.allowHextile && vncFlags.clientTakesHextile) {
@@ -225,6 +228,7 @@ void VNCEncoder::compressReset() {
 void VNCEncoder::fbSyncTasks() {
     #if !defined(VNC_FB_MONOCHROME)
     if(selectedEncoder == mZRLEEncoding) {
+        // Make sure the compression objects are allocated
         if(s_outbuf == NULL) {
             dprintf("Allocated %ld bytes for ZLib output buffer\n", COMP_OUT_BUF_SIZE);
             s_outbuf = (unsigned char*)NewPtr(COMP_OUT_BUF_SIZE);
@@ -247,6 +251,7 @@ void VNCEncoder::fbSyncTasks() {
 }
 
 Boolean VNCEncoder::getCompressedChunk(wdsEntry *wds) {
+    // Compress the data
     unsigned char *next_in;
     unsigned char *next_out = s_outbuf;
 

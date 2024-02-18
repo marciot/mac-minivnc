@@ -20,8 +20,10 @@
 #define USE_STDOUT
 #define LOG_COMPRESSION_STATS 0
 
+#define USE_SANITY_CHECKS 0 // Add extra checks for debugging
+
 /**
- * Specify a compression level for the color TTRL encoder,
+ * Specify a compression level for the color ZRLE/TRLE encoder,
  * from 0 to 4
  */
 
@@ -34,7 +36,7 @@
  * for connections after a client disconnects, allowing
  * MiniVNC to be used in headless server mode.
  */
-//#define VNC_HEADLESS_MODE
+#define VNC_HEADLESS_MODE
 
 /**
  * To build for a specific resolution, uncomment one of

@@ -17,43 +17,24 @@
 
 #pragma once
 
-#include "VNCConfig.h"
 #include "VNCTypes.h"
 
-#ifndef VNC_FB_WIDTH
-    extern unsigned int fbStride;
-    extern unsigned int fbWidth;
-    extern unsigned int fbHeight;
-#endif
-#ifndef VNC_FB_BITS_PER_PIX
-    extern unsigned long fbDepth;
-#endif
+extern unsigned char bytesPerCPixel;
 
-
-extern BitMap vncBits;
-extern VNCPixelFormat fbPixFormat, pendingPixFormat;
-extern unsigned char  *fbUpdateBuffer;
-
-class VNCFrameBuffer {
+class VNCPalette {
     public:
+        static unsigned char black, white;
+
         static OSErr setup();
         static OSErr destroy();
-        static void  copy();
-        static void  fill();
-        static unsigned char *getBaseAddr();
-        static Boolean checkScreenResolution();
-        static Boolean hasColorQuickdraw();
-        static void fbSyncTasks();
-        static void idleTask();
 
-        static unsigned char *getPixelAddr(unsigned int x, unsigned int y) {
-            #if !defined(VNC_BYTES_PER_LINE) && !defined(VNC_FB_BITS_PER_PIX)
-                return getBaseAddr() + (unsigned long)fbStride * y + x * fbDepth / 8;
-            #elif !defined(VNC_BYTES_PER_LINE)
-                return getBaseAddr() + (unsigned long)fbStride * y + x/VNC_FB_PIX_PER_BYTE;
-            #else
-                return getBaseAddr() + (unsigned long)VNC_BYTES_PER_LINE * y + x/VNC_FB_PIX_PER_BYTE;
-            #endif
-        }
+        static void setColor(unsigned int i, int red, int green, int blue);
+        static VNCColor *getPalette();
+
+        static void preparePaletteRoutines();
+        static unsigned char *emitTrueColorPixel(unsigned char *dst, unsigned char color);
+        static unsigned char *emitTrueColorCPIXEL(unsigned char *dst, unsigned char color);
+
+        #define emitColor(A,B)  {if (!fbPixFormat.trueColor) {*A++ = B;} else {A = VNCPalette::emitTrueColorPixel(A, B);}  }
+        #define emitCPIXEL(A,B) {if (!fbPixFormat.trueColor) {*A++ = B;} else {A = VNCPalette::emitTrueColorCPIXEL(A, B);} }
 };
-

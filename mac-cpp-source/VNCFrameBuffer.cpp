@@ -23,6 +23,8 @@
 #include "VNCServer.h"
 #include "VNCTypes.h"
 #include "VNCFrameBuffer.h"
+#include "VNCPalette.h"
+#include "VNCEncoder.h"
 #include "msgbuf.h"
 
 int ShowStatus(const char* format, ...);
@@ -32,8 +34,6 @@ const unsigned long &ScrnBase = *(unsigned long*) 0x824;
 BitMap vncBits = {0};
 //PixPatHandle deskPat;
 
-ColorTableEntry *ctColors = 0;
-unsigned char ctBlack, ctWhite, cPixelBytes;
 unsigned long ctSeed;
 
 #ifndef VNC_FB_WIDTH
@@ -73,22 +73,9 @@ OSErr VNCFrameBuffer::setup() {
         const unsigned char fbDepth = VNC_FB_BITS_PER_PIX;
     #endif
 
-    const unsigned int paletteSize = 1 << fbDepth;
-    ctColors = (ColorTableEntry*) NewPtr(sizeof(VNCColor) * paletteSize);
-    if (MemError() != noErr)
-        return MemError();
-
-    if(fbDepth == 1) {
-        // Set up the monochrome palette
-        ctColors[0].vncColor.red   = -1;
-        ctColors[0].vncColor.green = -1;
-        ctColors[0].vncColor.blue  = -1;
-        ctColors[1].vncColor.red   = 0;
-        ctColors[1].vncColor.green = 0;
-        ctColors[1].vncColor.blue  = 0;
-        ctBlack = 1;
-        ctWhite = 0;
-    }
+    OSErr err = VNCPalette::setup();
+    if (err != noErr)
+        return err;
 
     if(HasColorQD()) {
         //LMSetDeskHook(NULL);
@@ -109,10 +96,7 @@ OSErr VNCFrameBuffer::destroy() {
         DisposePtr((Ptr)vncBits.baseAddr);
         vncBits.baseAddr = 0;
     }
-    if(ctColors) {
-        DisposePtr((Ptr)ctColors);
-        ctColors = 0;
-    }
+    VNCPalette::destroy();
     if(hasColorQD) {
         //SetDeskCPat(NULL);
         //DisposePixPat(deskPat);
@@ -205,7 +189,7 @@ void VNCFrameBuffer::fbSyncTasks() {
         if (pendingPixFormat.bitsPerPixel) {
             memcpy(&fbPixFormat, &pendingPixFormat, sizeof(VNCPixelFormat));
             pendingPixFormat.bitsPerPixel = 0;
-            cPixelBytes = fbPixFormat.bitsPerPixel / 8;
+            bytesPerCPixel = fbPixFormat.bitsPerPixel / 8;
 
             if(fbPixFormat.trueColor) {
                 // Determine representation of CPIXEL
@@ -215,12 +199,12 @@ void VNCFrameBuffer::fbSyncTasks() {
                                                 ((unsigned long)fbPixFormat.blueMax  << fbPixFormat.blueShift);
 
                 if((fbPixFormat.bitsPerPixel == 32) && (colorBits == 0x00FFFFFF)) {
-                    cPixelBytes = 3;
+                    bytesPerCPixel = 3;
                 }
 
-                dprintf("Bytes per CPIXEL %d (ColorBits: %lx)\n", cPixelBytes, colorBits);
+                dprintf("Bytes per CPIXEL %d (ColorBits: %lx)\n", bytesPerCPixel, colorBits);
             }
-
+            VNCPalette::preparePaletteRoutines();
             vncFlags.fbColorMapNeedsUpdate = true;
         }
 
@@ -242,40 +226,22 @@ void VNCFrameBuffer::fbSyncTasks() {
                 if(paletteSize == ((*gct)->ctSize + 1)) {
                     // Store a copy of the indexed color table so that
                     // the interrupt routine can find it
-                    for(int i = 0; i < paletteSize; i++) {
-                        const RGBColor &src = (*gct)->ctTable[i].rgb;
-                        if(fbPixFormat.trueColor) {
-                            unsigned long r = ((unsigned long)src.red)   * fbPixFormat.redMax   / 0xFFFF;
-                            unsigned long g = ((unsigned long)src.green) * fbPixFormat.greenMax / 0xFFFF;
-                            unsigned long b = ((unsigned long)src.blue)  * fbPixFormat.blueMax  / 0xFFFF;
-                            unsigned long color = (r << fbPixFormat.redShift) | (g << fbPixFormat.greenShift) | (b << fbPixFormat.blueShift);
-                            if(fbPixFormat.bigEndian) {
-                                ctColors[i].packedColor = color <<= (sizeof(unsigned long) - cPixelBytes) * 8;
-                            } else {
-                                ctColors[i].packedColor = ((color & 0x000000ff) << 24u) |
-                                                          ((color & 0x0000ff00) << 8u)  |
-                                                          ((color & 0x00ff0000) >> 8u)  |
-                                                          ((color & 0xff000000) >> 24u);
-                            }
-                        } else {
-                            ctColors[i].vncColor.red   = src.red;
-                            ctColors[i].vncColor.green = src.green;
-                            ctColors[i].vncColor.blue  = src.blue;
-                        }
+                    for(unsigned int  i = 0; i < paletteSize; i++) {
+                        const RGBColor &rgb = (*gct)->ctTable[i].rgb;
+                        VNCPalette::setColor(i, rgb.red, rgb.green, rgb.blue);
                     }
                     ctSeed = (*gct)->ctSeed;
-
                     // Grab the white and black indices
                     GrafPtr savedPort;
                     GetPort (&savedPort);
                     CGrafPort cPort;
                     OpenCPort(&cPort);
-                    ctBlack = cPort.fgColor;
-                    ctWhite = cPort.bkColor;
+                    VNCPalette::black = cPort.fgColor;
+                    VNCPalette::white = cPort.bkColor;
                     CloseCPort(&cPort);
                     SetPort(savedPort);
 
-                    dprintf("Color palette ready (size:%d b:%d w:%d)\n", paletteSize, ctBlack, ctWhite);
+                    dprintf("Color palette ready (size:%d b:%d w:%d)\n", paletteSize, VNCPalette::black, VNCPalette::white);
                 } else {
                     dprintf("Palette size mismatch!\n");
                 }
@@ -288,8 +254,4 @@ void VNCFrameBuffer::fbSyncTasks() {
 
 unsigned char *VNCFrameBuffer::getBaseAddr() {
     return (unsigned char*) vncBits.baseAddr;
-}
-
-VNCColor *VNCFrameBuffer::getPalette() {
-    return (VNCColor*) ctColors;
 }

@@ -17,4 +17,18 @@
 
 #pragma once
 
-unsigned short writeScreenTileAsRLE(const unsigned char *src, unsigned char *dst, const unsigned char* end, char rows, char cols);
+#define USE_ASM_CODE 1
+
+struct ColorInfo {
+    unsigned char colorPal[127];
+    unsigned char colorMap[256];
+    unsigned int  runsOfOne;
+    unsigned int  nColors;
+    unsigned char colorSize;
+    unsigned char packRuns;
+};
+
+unsigned short screenToNative(const unsigned char *src, unsigned char *dst, short rows, short cols, ColorInfo *colorInfo);
+unsigned short nativeToRle(const unsigned char *src, unsigned char *end, unsigned char *dst, const unsigned char *stop, unsigned char depth, ColorInfo *cInfo);
+unsigned short nativeToPacked(const unsigned char *src, unsigned char *dst, const unsigned char* end, const char inDepth, const char outDepth, ColorInfo *colorInfo);
+unsigned short nativeToColors(const unsigned char *start, unsigned char *end, ColorInfo *colorInfo);

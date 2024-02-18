@@ -21,6 +21,8 @@
 #include "VNCFrameBuffer.h"
 #include "VNCScreenHash.h"
 
+#include "msgbuf.h"
+
 #ifdef VNC_BYTES_PER_LINE
     #define COL_HASH_SIZE ((VNC_BYTES_PER_LINE + sizeof(unsigned long) - 1)/sizeof(unsigned long))
     #define ROW_HASH_SIZE (VNC_FB_HEIGHT)
@@ -62,15 +64,25 @@ static MonoHashData *data = NULL;
 
 void unionRect(const VNCRect *a,VNCRect *b);
 
+#define ALIGN_PAD 3
+#define ALIGN_LONG(PTR) (PTR) + (sizeof(unsigned long) - (unsigned long)(PTR) % sizeof(unsigned long))
+
 OSErr VNCScreenHash::setup() {
     const size_t colHashSize = COL_HASH_SIZE;
     const size_t rowHashSize = ROW_HASH_SIZE;
-    const size_t dataSize = sizeof(MonoHashData) + (colHashSize + rowHashSize) * 2 * sizeof(unsigned long);
+    const size_t dataSize = sizeof(MonoHashData) + (colHashSize + rowHashSize) * 2 * sizeof(unsigned long) + ALIGN_PAD;
     data = (MonoHashData*) NewPtr(dataSize);
     if (MemError() != noErr)
         return MemError();
 
-    Ptr hashPtr = (Ptr)data + sizeof(MonoHashData);
+    Ptr hashPtr = ALIGN_LONG((Ptr)data + sizeof(MonoHashData));
+
+    #if USE_SANITY_CHECKS
+        if (((unsigned long)hashPtr % 4) != 0) {
+            dprintf("Screen hash not long word aligned %ld\n", (unsigned long)hashPtr % 4);
+        }
+    #endif
+
     data->rowHashPrev = (unsigned long*)hashPtr;
     data->rowHashNext = data->rowHashPrev + rowHashSize;
     data->colHashPrev = data->rowHashNext + rowHashSize;

@@ -96,6 +96,13 @@ main() {
 
     LoadPreferences();
 
+    // Disable modes that crash the Mac Plus
+    if(!HasColorQD()) {
+        vncConfig.allowRaw = false;
+        vncConfig.allowHextile = false;
+        vncConfig.allowZRLE = false;
+    }
+
     /* Create the new dialog */
     gDialog =  GetNewDialog(128, NULL, (WindowPtr) -1);
     gOptions = GetNewDialog(131, NULL, (WindowPtr) -1);
@@ -295,34 +302,34 @@ void RefreshServerSettings() {
     ControlHandle hTRLE    = FindCHndl(gOptions,iTRLE);
     ControlHandle hZRLE    = FindCHndl(gOptions,iZRLE);
 
-    #if defined(VNC_FB_MONOCHROME)
+    if(!HasColorQD()) {
         HiliteControl  (hRaw,     255);
         HiliteControl  (hHexTile, 255);
         HiliteControl  (hTRLE,    0);
         HiliteControl  (hZRLE,    255);
-        SetControlValue(hRaw,     0);
-        SetControlValue(hHexTile, 0);
-        SetControlValue(hTRLE,    1);
-        SetControlValue(hZRLE,    0);
-    #else
-    if(vncServerActive()) {
+    } else if(vncServerActive()) {
         HiliteControl  (hRaw,     vncFlags.clientTakesRaw     ? 0 : 255);
         HiliteControl  (hHexTile, vncFlags.clientTakesHextile ? 0 : 255);
         HiliteControl  (hTRLE,    vncFlags.clientTakesTRLE    ? 0 : 255);
+        HiliteControl  (hZRLE,    vncFlags.clientTakesZRLE    ? 0 : 255);
+    } else {
+        HiliteControl  (hRaw,     0);
+        HiliteControl  (hHexTile, 0);
+        HiliteControl  (hTRLE,    0);
+        HiliteControl  (hZRLE,    0);
+    }
+
+    if(vncServerActive()) {
         SetControlValue(hRaw,     vncFlags.clientTakesRaw     && vncConfig.allowRaw);
         SetControlValue(hHexTile, vncFlags.clientTakesHextile && vncConfig.allowHextile);
         SetControlValue(hTRLE,    vncFlags.clientTakesTRLE    && vncConfig.allowTRLE);
         SetControlValue(hZRLE,    vncFlags.clientTakesZRLE    && vncConfig.allowZRLE);
     } else {
-        HiliteControl  (hRaw,     0);
-        HiliteControl  (hHexTile, 0);
-        HiliteControl  (hTRLE,    0);
         SetControlValue(hRaw,     vncConfig.allowRaw);
         SetControlValue(hHexTile, vncConfig.allowHextile);
         SetControlValue(hTRLE,    vncConfig.allowTRLE);
         SetControlValue(hZRLE,    vncConfig.allowZRLE);
     }
-    #endif
 
     SetControlValue(FindCHndl(gOptions,iGraphics),    vncConfig.allowStreaming);
     SetControlValue(FindCHndl(gOptions,iIncremental), vncConfig.allowIncremental);

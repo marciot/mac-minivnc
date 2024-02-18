@@ -24,6 +24,8 @@ class VNCEncodeTRLE {
     public:
         static Size minBufferSize();
 
+        static unsigned long encodeTile(const unsigned char *src, char rows, char cols, unsigned char *dst, unsigned long bytesAvail, Boolean allowPaletteReuse);
+
         static int begin();
         static Boolean getChunk(int x, int y, int w, int h, wdsEntry *wds);
 

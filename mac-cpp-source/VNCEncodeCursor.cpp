@@ -18,7 +18,7 @@
 
 #include "VNCServer.h"
 #include "VNCFrameBuffer.h"
-#include "VNCEncoder.h"
+#include "VNCPalette.h"
 #include "VNCEncodeCursor.h"
 
 unsigned long cursorChecksum;
@@ -74,7 +74,7 @@ Boolean VNCEncodeCursor::getChunk(wdsEntry *wds) {
     for(int y = 0; y < 16; y++) {
         unsigned short bits = TheCrsr[y];
         for(int x = 0; x < 16; x++) {
-            emitColor(dst, (bits & 0x8000) ? ctBlack : ctWhite);
+            emitColor(dst, (bits & 0x8000) ? VNCPalette::black : VNCPalette::white);
             bits <<= 1;
         }
     }

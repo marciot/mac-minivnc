@@ -31,7 +31,7 @@ VNCConfig vncConfig = {
     true,         // allowZRLE
     false,        // autoRestart
     false,        // forceVNCAuth
-    8,            // zLibCompression
+    5,            // zLibCompression
     "Macintosh",  // Session name
     5900,         // tcpPort
     'µVNC'        // Validation

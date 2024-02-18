@@ -29,8 +29,8 @@
 #define TileReuse    127
 #define TilePlainRLE 128
 
-extern int              tile_y;
-extern unsigned char    lastPaletteSize;
+extern int    tile_y;
+extern unsigned char lastTile;
 
 /**
  * This is a fast version of a B&W tile encoder. On entry:
@@ -63,10 +63,10 @@ static asm unsigned short _encodeTile(const unsigned char *src:__A0, unsigned ch
 
 aStart:
     move.b #Tile2Color,tmp
-    cmp.b lastPaletteSize,tmp
+    cmp.b lastTile,tmp
     beq aReusePalette
 aWritePalette:
-    move.b tmp,lastPaletteSize
+    move.b tmp,lastTile
     move.b tmp,(dst)+            // Packed tile type
     move.b #00,(dst)+
     move.b #01,(dst)+
@@ -77,10 +77,10 @@ aReusePalette:
 
 uStart:
     move.b #Tile2Color,tmp
-    cmp.b lastPaletteSize,tmp
+    cmp.b lastTile,tmp
     beq uReusePalette
 uWritePalette:
-    move.b tmp,lastPaletteSize
+    move.b tmp,lastTile
     move.b tmp,(dst)+            // Packed tile type
     move.w #0001,(dst)+
     bra aCopyWhitePixels
@@ -139,7 +139,7 @@ done:
     rts
 
 aSolidWhiteTile:
-    move.b #TileSolid,lastPaletteSize
+    move.b #TileSolid,lastTile
     // Rewrite tile as solid
     movea.l start,dst
     move.w #(TileSolid<<8)+DEBUG_SOLID_TILE,(dst)+
@@ -148,7 +148,7 @@ aSolidWhiteTile:
 
 uSolidWhiteTile:
     moveq #TileSolid,tmp
-    move.b tmp,lastPaletteSize
+    move.b tmp,lastTile
     // Rewrite tile as solid
     movea.l start,dst
     move.b tmp,(dst)+

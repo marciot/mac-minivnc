@@ -135,7 +135,7 @@
 /*#define MINIZ_NO_INFLATE_APIS */
 
 /* Define MINIZ_NO_ARCHIVE_APIS to disable all ZIP archive API's. */
-/*#define MINIZ_NO_ARCHIVE_APIS */
+#define MINIZ_NO_ARCHIVE_APIS
 
 /* Define MINIZ_NO_ARCHIVE_WRITING_APIS to disable all writing related ZIP archive API's. */
 /*#define MINIZ_NO_ARCHIVE_WRITING_APIS */
@@ -540,7 +540,6 @@ typedef void *const voidpc;
 #endif
 #include <stdlib.h>
 #include <string.h>
-
 
 
 /* ------------------- Types and macros */

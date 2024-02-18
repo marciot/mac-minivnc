@@ -17,7 +17,8 @@
 #include <string.h>
 
 #include "VNCServer.h"
-#include "VNCScreenToRLE.h"
+#include "VNCPalette.h"
+#include "VNCEncodeTiles.h"
 #include "VNCFrameBuffer.h"
 #include "VNCEncodeHextile.h"
 #include "msgbuf.h"
@@ -59,14 +60,6 @@ int VNCEncodeHextile::begin() {
         inline void h(unsigned char h) {b = y + h + 1;};
     };
 
-
-
-    #define RLE_LOOP_START(src, len)                                        \
-        for (unsigned char *c = (src), *end = (src) + (len); c != end;) {   \
-            unsigned char color = *c++;                                     \
-            unsigned char count = *c++;
-    #define RLE_LOOP_END }
-
     inline Boolean mergeTop(Subrect *sRects, const Subrect *lastRect, unsigned char *cRects) {
         Subrect *candidate = &sRects[cRects[lastRect->x]];
         // Make this a single return statement so the compiler can inline it!
@@ -78,8 +71,17 @@ int VNCEncodeHextile::begin() {
                (candidate->b++, true));
     }
 
-    static unsigned short encodeTile(const unsigned char *src, unsigned char *dst, char rows) {
-        int len = writeScreenTileAsRLE(src, dst + 1, 0, rows, 16) + 1;
+    static unsigned short encodeTile(const unsigned char *src, char rows, char cols, unsigned char *dst, unsigned long bytesAvail) {
+        unsigned char *start = dst;
+        unsigned char nativeTile[256];
+        unsigned char *rleTile = dst + 1;
+
+        ColorInfo info;
+        info.nColors = 256;
+        info.colorSize = 1;
+        info.packRuns   = false;
+        const unsigned long nativeLen = screenToNative(src, nativeTile, rows, cols, 0);
+        const unsigned long len = nativeToRle(nativeTile, nativeTile + nativeLen, rleTile, rleTile + 512, fbDepth, &info) + 1;
 
         struct RLEPair {
             unsigned char color;
@@ -92,33 +94,34 @@ int VNCEncodeHextile::begin() {
 
         Subrect sRects[256];
         Subrect *lastRect = sRects;
-        rle = (RLEPair*) (dst + 1);
+        rle = (RLEPair*) rleTile;
 
         unsigned char cRects[16] = {0};
-        unsigned char pixels = rows * 16 - 1;
-        unsigned char rleCount = rle->count;
-        unsigned char rleColor = rle->color;
-        do {
-            const unsigned char x = 15 - (pixels & 0x0F);
-            const unsigned char y = (rows - 1) - (pixels >> 4);
-            if((rleCount > 15) && (x == 0)) {
-                const unsigned char h = rleCount / 16;
+        unsigned short rleCount = rle->count + 1;
+        unsigned char  rleColor = rle->color;
+        for(int y = 0; y < rows; y++)
+        for(int x = 0; x < cols; ) {
+            if((rleCount >= cols) && (x == 0)) {
+                const unsigned char h = rleCount / cols;
                 lastRect->c = rleColor;
                 lastRect->x = 0;
                 lastRect->y = y;
-                lastRect->w = 15;
+                lastRect->w = cols - 1;
                 lastRect->h(h - 1);
-                pixels   -= h * 16;
-                rleCount -= h * 16;
+                rleCount -= h * cols;
+                y += h;
+                if(y == rows) {
+                    cols = 0; // Force inner loop to exit
+                }
             } else {
-                const unsigned char w = min(rleCount, 15 - x);
+                const unsigned char w = min(rleCount, cols - x);
                 lastRect->c = rleColor;
                 lastRect->x = x;
                 lastRect->y = y;
-                lastRect->w = w;
+                lastRect->w = w - 1;
                 lastRect->h(0);
-                pixels   -= w + 1;
-                rleCount -= w + 1;
+                rleCount -= w;
+                x        += w;
             }
             if (!mergeTop(sRects, lastRect, cRects)) {
                 cRects[x] = lastRect - sRects;  // Record subrect in column lookup table
@@ -126,12 +129,12 @@ int VNCEncodeHextile::begin() {
                 lastRect++;                     // Move to next tile
             }
             // Move to the next RLE element
-            if (rleCount == 255) {
+            if (rleCount == 0) {
                 rle++;
                 rleColor = rle->color;
-                rleCount = rle->count;
+                rleCount = rle->count + 1;
             }
-        } while(pixels != 255);
+        }
 
         // Generate a histogram of rectangles in the tile
 
@@ -159,120 +162,126 @@ int VNCEncodeHextile::begin() {
 
         // Figure out colors
         const unsigned char bytesPerPixel = fbPixFormat.bitsPerPixel >> 3;
-        const unsigned int  rawTileSize   = 1 + 256 * bytesPerPixel;
 
-        //#define DEBUG_SUBRECTS
-        #ifdef  DEBUG_SUBRECTS
-            // Paint all subrects different colors for verification
-            if( rawTileSize > 2 + bytesPerPixel * 2 + nFgRects * 2 ) {
-                unsigned char *tile = dst;
-                *dst++ = BackgroundSpecified | AnySubrects | SubrectsColored;
-                emitColor(dst, bgColor);
-                *dst++ = nFgRects;
-                for(int i = 0; i < nRects; i++) {
-                    if(sRects[i].c != bgColor) {
-                        emitColor(dst, sRects[i].c + i * 130);
-                        *dst++ = (sRects[i].x << 4) | sRects[i].y;
-                        *dst++ = (sRects[i].w << 4) | sRects[i].h();
+        if (nColors > 1) {
+            const unsigned int rawTileLen = 1 + 256 * bytesPerPixel;
+
+            // Emit two-colored tiles with subrects
+            if(nColors == 2) {
+                const unsigned char emitBgColor = (lastBg != bgColor);
+                const unsigned char emitFgColor = (lastFg != fgColor);
+                unsigned long twoColorTileLen = ((unsigned int)emitBgColor + emitFgColor) + bytesPerPixel * 2 + nFgRects * 2;
+                if ((twoColorTileLen <= rawTileLen) && (twoColorTileLen <= bytesAvail)) {
+                    *dst++ = AnySubrects;
+                    if(emitBgColor) {
+                        *start |= BackgroundSpecified;
+                        emitColor(dst, bgColor);
+                        lastBg = bgColor;
                     }
+                    if(emitFgColor) {
+                        *start |= ForegroundSpecified;
+                        emitColor(dst, fgColor);
+                        lastFg = fgColor;
+                    }
+                    *dst++ = nFgRects;
+                    for(int i = 0; i < nRects; i++) {
+                        if(sRects[i].c != bgColor) {
+                            *dst++ = (sRects[i].x << 4) | sRects[i].y;
+                            *dst++ = (sRects[i].w << 4) | sRects[i].h();
+                        }
+                    }
+                    #if USE_SANITY_CHECKS
+                        if (twoColorTileLen != (dst - start)) {
+                            dprintf("Incorrect tile %d length: %ld != %ld\n", start[0], twoColorTileLen, (dst - start));
+                        }
+                    #endif
+                    return dst - start;
                 }
-                return dst - tile;
-            } else {
-                // Emit a raw tile
-                return len;
             }
-        #endif
 
-        // Emit a solid tile if all 256 pixels are equal
-        if(nColors == 1) {
-            unsigned char *tile = dst;
-            *dst++ = 0;
-            if(lastBg != bgColor) {
-                *tile = BackgroundSpecified;
-                emitColor(dst, bgColor);
-                lastBg = bgColor;
-                return dst - tile;
-            } else {
-                return 1;
+            // Emit multi-colored tiles with subrects
+            else {
+                const unsigned char emitBgColor = (lastBg != bgColor);
+                const unsigned long multiColorTileLen = ((unsigned int)2) + (emitBgColor && bytesPerPixel) + (nFgRects * (2 + bytesPerPixel));
+                if ((multiColorTileLen <= rawTileLen) && (multiColorTileLen <= bytesAvail)) {
+                    *dst++ = AnySubrects | SubrectsColored;
+                    if(lastBg != bgColor) {
+                        *start |= BackgroundSpecified;
+                        emitColor(dst, bgColor);
+                        lastBg = bgColor;
+                    }
+                    *dst++ = nFgRects;
+                    for(int i = 0; i < nRects; i++) {
+                        if(sRects[i].c != bgColor) {
+                            emitColor(dst, sRects[i].c);
+                            *dst++ = (sRects[i].x << 4) | sRects[i].y;
+                            *dst++ = (sRects[i].w << 4) | sRects[i].h();
+                        }
+                    }
+                    lastFg = -1;
+                    #if USE_SANITY_CHECKS
+                        if (multiColorTileLen != (dst - start)) {
+                            dprintf("Incorrect tile %d length: %ld != %ld\n", start[0], multiColorTileLen, (dst - start));
+                        }
+                    #endif
+                    return dst - start;
+                }
+            }
+
+            if (rawTileLen <= bytesAvail) {
+                // If we get here, emit a raw tile
+
+                // Move data to end of buffer to make way for color expansion
+                unsigned char *copyTo = dst - len + UPDATE_BUFFER_SIZE;
+                BlockMove(dst, copyTo, len);
+
+                // Rewrite the tile with expanded colors
+                *dst++ = Raw;
+                for (unsigned char *c = copyTo+1, *end = copyTo + len; c != end;) {
+                    unsigned char color = *c++, count = *c++ + 1;
+                    while(count--) emitColor(dst, color);
+                    #if USE_SANITY_CHECKS
+                        if(dst >= c) dprintf("Overrrun!\n");
+                    #endif
+                }
+
+                lastBg = lastFg = -1;
+                #if USE_SANITY_CHECKS
+                    if (rawTileLen != (dst - start)) {
+                        dprintf("Incorrect tile %d length: %ld != %ld\n", start[0], rawTileLen, (dst - start));
+                    }
+                #endif
+                return dst - start;
             }
         }
 
-        // Emit two-colored tiles with subrects
-        if( (nColors == 2) && ((((unsigned int)2) + bytesPerPixel * 2 + nFgRects * 2) <= rawTileSize) ) {
-            unsigned char *tile = dst;
-            *dst++ = AnySubrects;
-            if(lastBg != bgColor) {
-                *tile |= BackgroundSpecified;
-                emitColor(dst, bgColor);
-                lastBg = bgColor;
-            }
-            if(lastFg != fgColor) {
-                *tile |= ForegroundSpecified;
-                emitColor(dst, fgColor);
-                lastFg = fgColor;
-            }
-            *dst++ = nFgRects;
-            for(int i = 0; i < nRects; i++) {
-                if(sRects[i].c != bgColor) {
-                    *dst++ = (sRects[i].x << 4) | sRects[i].y;
-                    *dst++ = (sRects[i].w << 4) | sRects[i].h();
-                }
-            }
-            return dst - tile;
+        // Otherwise emit a solid tile
+
+        *dst++ = 0;
+        if(lastBg != bgColor) {
+            *start = BackgroundSpecified;
+            emitColor(dst, bgColor);
+            lastBg = bgColor;
+            return dst - start;
+        } else {
+            return 1;
         }
-
-        // Emit multi-colored tiles with subrects
-        if((nColors > 2) && ((((unsigned int)2) + bytesPerPixel + (nFgRects * (2 + bytesPerPixel))) <= rawTileSize) ) {
-            unsigned char *tile = dst;
-            *dst++ = AnySubrects | SubrectsColored;
-            if(lastBg != bgColor) {
-                *tile |= BackgroundSpecified;
-                emitColor(dst, bgColor);
-                lastBg = bgColor;
-            }
-            *dst++ = nFgRects;
-            for(int i = 0; i < nRects; i++) {
-                if(sRects[i].c != bgColor) {
-                    emitColor(dst, sRects[i].c);
-                    *dst++ = (sRects[i].x << 4) | sRects[i].y;
-                    *dst++ = (sRects[i].w << 4) | sRects[i].h();
-                }
-            }
-            lastFg = -1;
-            return dst - tile;
-        }
-
-        // Else emit a raw tile
-
-        // Move data to end of buffer to make way for color expansion
-        unsigned char *copyTo = dst - len + UPDATE_BUFFER_SIZE;
-        BlockMove(dst, copyTo, len);
-
-        // Rewrite the tile with expanded colors
-        unsigned char *tile = dst;
-        *dst++ = Raw;
-        RLE_LOOP_START(copyTo+1, len-1)
-            for(int i = count + 1; i; i--)
-                emitColor(dst, color);
-            if(dst >= c) dprintf("Overrrun!\n");
-        RLE_LOOP_END
-
-        lastBg = lastFg = -1;
-
-        return dst - tile;
-
     }
 
     Boolean VNCEncodeHextile::getChunk(int x, int y, int w, int h, wdsEntry *wds) {
-        unsigned char *dst = fbUpdateBuffer, *src, rows, tiles = UPDATE_MAX_TILES;
+        unsigned char *dst = fbUpdateBuffer, *src, rows, cols;
 
         const unsigned char bytesPerPixel = fbPixFormat.bitsPerPixel >> 3;
         const unsigned int  maxTileSize   = 1 + 256 * bytesPerPixel;
 
+        unsigned long bytesAvail = UPDATE_BUFFER_SIZE;
+
         goto beginLoop;
 
-        while(tiles-- && (dst - fbUpdateBuffer <= (UPDATE_BUFFER_SIZE - maxTileSize))) {
-            dst += encodeTile(src, dst, rows);
+        while (bytesAvail > maxTileSize) {
+            const unsigned long len = encodeTile(src, rows, cols, dst, bytesAvail);
+            bytesAvail -= len;
+            dst += len;
 
             // Advance to next tile in row
             #ifdef VNC_FB_BITS_PER_PIX
@@ -281,6 +290,7 @@ int VNCEncodeHextile::begin() {
                 src += 2 * fbDepth;
             #endif
             tile_x += 16;
+            cols = min(16, w - tile_x);
             if (tile_x < w)
                 continue;
 
@@ -291,6 +301,7 @@ int VNCEncodeHextile::begin() {
             tile_x = 0;
 
         beginLoop:
+            cols = min(16, w - tile_x);
             rows = min(16, h - tile_y);
             src = VNCFrameBuffer::getPixelAddr(x + tile_x, y + tile_y);
         }

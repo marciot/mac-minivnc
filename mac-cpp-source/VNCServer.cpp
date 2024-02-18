@@ -23,6 +23,7 @@
 #include "VNCServer.h"
 #include "VNCKeyboard.h"
 #include "VNCTypes.h"
+#include "VNCPalette.h"
 #include "VNCFrameBuffer.h"
 #include "VNCScreenHash.h"
 #include "VNCEncoder.h"
@@ -459,7 +460,7 @@ pascal void tcpSendServerInit(TCPiopb *pb) {
         #if 0
             vncServerMessage.init.format.trueColor = 1;
             vncServerMessage.init.format.bitsPerPixel = 32;
-            vncServerMessage.init.format.depth = 32;
+            vncServerMessage.init.format.depth = 24;
             vncServerMessage.init.format.redMax = 255;    // 2 bits
             vncServerMessage.init.format.greenMax = 255;  // 3 bits
             vncServerMessage.init.format.blueMax = 255;   // 2 bits
@@ -485,7 +486,7 @@ pascal void tcpSendServerInit(TCPiopb *pb) {
 
         pendingPixFormat.bitsPerPixel = 0;
         memcpy(&fbPixFormat, &vncServerMessage.init.format, sizeof(VNCPixelFormat));
-        cPixelBytes = fbPixFormat.bitsPerPixel / 8;
+        bytesPerCPixel = fbPixFormat.bitsPerPixel / 8;
         vncFlags.fbColorMapNeedsUpdate = true;
         vncFlags.fbUpdateInProgress = false;
         vncFlags.fbUpdatePending = false;
@@ -810,7 +811,7 @@ pascal void vncPrepareForFBUpdate() {
     fbUpdateRect.w += dx;
 
     // Make sure width is a multiple of 16
-    fbUpdateRect.w = (fbUpdateRect.w + 15) & ~15;
+    //fbUpdateRect.w = (fbUpdateRect.w + 15) & ~15;
 
     #ifdef VNC_FB_WIDTH
         const unsigned int fbWidth = VNC_FB_WIDTH;
@@ -874,7 +875,7 @@ pascal void vncSendFBUpdateColorMap() {
 
     myWDS[0].ptr = (Ptr) &vncServerMessage;
     myWDS[0].length = sizeof(VNCSetColorMapHeader);
-    myWDS[1].ptr = (Ptr) VNCFrameBuffer::getPalette();
+    myWDS[1].ptr = (Ptr) VNCPalette::getPalette();
     myWDS[1].length = paletteSize * sizeof(VNCColor);
     myWDS[2].ptr = 0;
     myWDS[2].length = 0;

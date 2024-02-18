@@ -44,37 +44,3 @@ class VNCEncoder {
 
         static Boolean getCompressedChunk(wdsEntry *wds);
 };
-
-inline void emitColor(unsigned char *&dst, unsigned char color) {
-    if(fbPixFormat.trueColor) {
-        unsigned char *src = (unsigned char*)&ctColors[color].packedColor;
-        if((cPixelBytes == 3) && fbPixFormat.bigEndian) {
-            *dst++ = 0; // Pad on left
-        }
-        switch(cPixelBytes) {
-            case 4: *dst++ = *src++;
-            case 3: *dst++ = *src++;
-            case 2: *dst++ = *src++;
-            case 1: *dst++ = *src++;
-        }
-        if((cPixelBytes == 3) && !fbPixFormat.bigEndian) {
-            *dst++ = 0; // Pad on right
-        }
-    } else {
-        *dst++ = color;
-    }
-}
-
-inline void emitCPIXEL(unsigned char *&dst, unsigned char color) {
-    if(fbPixFormat.trueColor) {
-        unsigned char *src = (unsigned char*)&ctColors[color].packedColor;
-        switch(cPixelBytes) {
-            case 4: *dst++ = *src++;
-            case 3: *dst++ = *src++;
-            case 2: *dst++ = *src++;
-            case 1: *dst++ = *src++;
-        }
-    } else {
-        *dst++ = color;
-    }
-}
