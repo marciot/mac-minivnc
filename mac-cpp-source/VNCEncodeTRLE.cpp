@@ -246,6 +246,8 @@ void VNCEncodeTRLE::begin() {
                                     (currentInfo.nColors > 1) &&
                                     (mapColors ? canReuseColorsPalette(&lastInfo, &currentInfo) : (lastInfo.nColors == nativeColors));
             if (canReuse) info = &lastInfo;
+        #else
+            const Boolean canReuse = false;
         #endif
 
         if (currentInfo.nColors > 1) {
@@ -278,7 +280,7 @@ void VNCEncodeTRLE::begin() {
                 if (currentInfo.nColors <= 4) {
             #endif
                     tileDepth = getDepth(currentInfo.nColors);
-                    const unsigned long bitsPerRow = /*(unsigned short)*/epb.cols * tileDepth;
+                    const unsigned long bitsPerRow = epb.cols * tileDepth;
                     const unsigned long bytesPerRow  = (bitsPerRow + 7) / 8;
                     const Boolean rowDivisibleByBytes = (bitsPerRow % 8) == 0;
                     const unsigned long packedTileLen = 1 + (canReuse ? 0 : paletteLen) + bytesPerRow * epb.rows;
