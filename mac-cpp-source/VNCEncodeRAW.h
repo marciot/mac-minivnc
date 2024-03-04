@@ -24,9 +24,7 @@ class VNCEncodeRaw {
     public:
         static Size minBufferSize();
 
-        static int begin();
-        static Boolean getChunk(int x, int y, int w, int h, wdsEntry *wds);
-
-        static long getEncoding() {return mRawEncoding;}
+        static void begin();
+        static Boolean getChunk(EncoderPB &epb);
 };
 

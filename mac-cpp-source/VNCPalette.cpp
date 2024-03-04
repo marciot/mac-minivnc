@@ -15,105 +15,115 @@
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
 
+#include "DebugLog.h"
+#include "GestaltUtils.h"
+
 #include "VNCConfig.h"
+#include "VNCServer.h"
 #include "VNCPalette.h"
-#include "VNCFrameBuffer.h"
-#include "msgbuf.h"
+#include "VNCEncoder.h"
 
 #include "VNCTypes.h"
 
-union VNCColorTable {
-    Ptr           ptr;
-    VNCColor      *vncColors;
-    unsigned long *packedColors;
-};
+extern unsigned long ctSeed;
 
-VNCColorTable ctColors = {0};
-unsigned char VNCPalette::black, VNCPalette::white, bytesPerCPixel;
-static unsigned char cPixelShift, pixelShift, bytesPerPixel;
-static unsigned long cPixelMask, pixelMask;
+unsigned char VNCPalette::black, VNCPalette::white, bytesPerColor;
+VNCPixelFormat fbPixFormat;
+VNCPixelFormat pendingPixFormat;
+
+unsigned long *vncTrueColors = 0;
 
 OSErr VNCPalette::setup() {
-    const unsigned int paletteSize = 1 << fbDepth;
-    ctColors.ptr = NewPtr(paletteSize * sizeof(VNCColor));
-    if (MemError() != noErr)
-        return MemError();
-
-    if(fbDepth == 1) {
-        // Set up the monochrome palette
-        ctColors.vncColors[0].red   = -1;
-        ctColors.vncColors[0].green = -1;
-        ctColors.vncColors[0].blue  = -1;
-        ctColors.vncColors[1].red   = 0;
-        ctColors.vncColors[1].green = 0;
-        ctColors.vncColors[1].blue  = 0;
-        VNCPalette::black = 1;
-        VNCPalette::white = 0;
-    }
+    ctSeed = 10;
     return noErr;
 }
 
 OSErr VNCPalette::destroy() {
-    if (ctColors.vncColors) {
-        DisposePtr(ctColors.ptr);
-        ctColors.ptr = 0;
+    if (vncTrueColors) {
+        DisposePtr((Ptr)vncTrueColors);
+        vncTrueColors = 0;
     }
     return noErr;
 }
 
-void VNCPalette::setColor(unsigned int i, int red, int green, int blue) {
-    if(fbPixFormat.trueColor) {
-        unsigned long r = ((unsigned long)red)   * fbPixFormat.redMax   / 0xFFFF;
-        unsigned long g = ((unsigned long)green) * fbPixFormat.greenMax / 0xFFFF;
-        unsigned long b = ((unsigned long)blue)  * fbPixFormat.blueMax  / 0xFFFF;
-        unsigned long color = (r << fbPixFormat.redShift) | (g << fbPixFormat.greenShift) | (b << fbPixFormat.blueShift);
-        if(fbPixFormat.bigEndian) {
-            ctColors.packedColors[i] = color;
-        } else {
-            ctColors.packedColors[i] = ((color & 0x000000ff) << 24u) |
-                                       ((color & 0x0000ff00) << 8u)  |
-                                       ((color & 0x00ff0000) >> 8u)  |
-                                       ((color & 0xff000000) >> 24u);
+Size VNCPalette::minBufferSize() {
+    return 256 * sizeof(VNCColor);
+}
+
+void VNCPalette::beginNewSession(const VNCPixelFormat &format) {
+    pendingPixFormat.bitsPerPixel = 0;
+    BlockMove(&format, &fbPixFormat, sizeof(VNCPixelFormat));
+    vncFlags.fbColorMapNeedsUpdate = true;
+}
+
+void VNCPalette::setPixelFormat(const VNCPixelFormat &format) {
+    BlockMove(&format, &pendingPixFormat, sizeof(VNCPixelFormat));
+}
+
+Boolean VNCPalette::hasChangesPending() {
+    return VNCPalette::hasWaitingColorMapUpdate() || pendingPixFormat.bitsPerPixel;
+}
+
+Boolean VNCPalette::hasWaitingColorMapUpdate() {
+    return vncFlags.fbColorMapNeedsUpdate && !fbPixFormat.trueColor;
+}
+
+VNCColor *VNCPalette::getWaitingColorMapUpdate(unsigned int *paletteSize) {
+    #ifdef VNC_FB_BITS_PER_PIX
+        const unsigned char fbDepth = VNC_FB_BITS_PER_PIX;
+    #endif
+    VNCColor *result = NULL;
+    if (hasWaitingColorMapUpdate()) {
+        *paletteSize = 1 << fbDepth;
+        result = (VNCColor*) fbUpdateBuffer;
+    }
+    vncFlags.fbColorMapNeedsUpdate = false;
+    return result;
+}
+
+void VNCPalette::setIndexedColor(unsigned int i, int red, int green, int blue) {
+    VNCColor *vncColors = (VNCColor *)fbUpdateBuffer;
+    vncColors[i].red   = red;
+    vncColors[i].green = green;
+    vncColors[i].blue  = blue;
+}
+
+void VNCPalette::idleTask() {
+    #if !defined(VNC_FB_MONOCHROME)
+        if (hasColorQD) {
+            checkColorTable();
         }
-    } else {
-        ctColors.vncColors[i].red   = red;
-        ctColors.vncColors[i].green = green;
-        ctColors.vncColors[i].blue  = blue;
+    #endif
+}
+
+OSErr VNCPalette::fbSyncTasks() {
+    if (!vncBits.baseAddr) return noErr;
+
+    // Handle any changes to the pixel format
+
+    if (!hasColorQD
+        #if defined(VNC_FB_MONOCHROME)
+            || true
+        #endif
+    ) {
+        if (vncFlags.fbColorMapNeedsUpdate) {
+            // Set up the monochrome palette
+            setIndexedColor(0, -1, -1, -1);
+            setIndexedColor(1,  0,  0,  0);
+            VNCPalette::white = 0;
+            VNCPalette::black = 1;
+        }
+        return noErr;
+    }
+
+    #if !defined(VNC_FB_MONOCHROME)
+        return updateColorTable();
+    #endif
+}
+
+void VNCPalette::prepareColorRoutines(Boolean isCPIXEL) {
+    bytesPerColor = fbPixFormat.bitsPerPixel / 8;
+    if (fbPixFormat.trueColor) {
+        prepareTrueColorRoutines(isCPIXEL);
     }
 }
-
-VNCColor *VNCPalette::getPalette() {
-    return (VNCColor*) ctColors.vncColors;
-}
-
-void VNCPalette::preparePaletteRoutines() {
-    cPixelShift = (sizeof(unsigned long) - bytesPerCPixel) * 8;
-    pixelShift  = (sizeof(unsigned long) * 8) - fbPixFormat.bitsPerPixel;
-    cPixelMask  = (1UL << cPixelShift) - 1;
-    pixelMask   = (1UL << pixelShift) - 1 ;
-    if (!fbPixFormat.bigEndian) {
-        cPixelShift = 0;
-        pixelShift  = 0;
-    }
-    bytesPerPixel = fbPixFormat.bitsPerPixel >> 3;
-}
-
-#pragma a6frames off
-#pragma optimize_for_size off
-#pragma code68020 on
-
-unsigned char *VNCPalette::emitTrueColorPixel(unsigned char *dst, unsigned char color) {
-    const unsigned long packed = ctColors.packedColors[color] << pixelShift;
-    *(unsigned long *)dst = ((*(unsigned long *)dst ^ packed) & pixelMask) ^ packed;
-    return dst + bytesPerPixel;
-}
-
-unsigned char *VNCPalette::emitTrueColorCPIXEL(unsigned char *dst, unsigned char color) {
-    const unsigned long packed = ctColors.packedColors[color] << cPixelShift;
-    *(unsigned long *)dst = (((*(unsigned long *)dst) ^ packed) & cPixelMask) ^ packed;
-    return dst + bytesPerCPixel;
-}
-
-#pragma optimize_for_size reset
-#pragma a6frames reset
-#pragma code68020 reset

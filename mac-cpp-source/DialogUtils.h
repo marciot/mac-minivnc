@@ -15,17 +15,12 @@
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
 
-#pragma once
+ControlHandle FindCHndl(DialogPtr dlg, int item, short *type);
 
-#include "MacTCP.h"
-#include "VNCEncoder.h"
+void ShowStatus(Str255 pStr);
+void SetDialogTitle(Str255 pStr);
+int ShowAlert(unsigned long type, short id, Str255 pStr);
 
-class VNCEncodeHextile {
-    public:
-        static Size minBufferSize();
-
-        static void begin();
-        static unsigned long encodeSolidTile(const EncoderPB &epb);
-        static unsigned long encodeTile(const EncoderPB &epb);
-};
-
+void ShowStatus(const char* format, ...);
+void SetDialogTitle(const char* format, ...);
+int ShowAlert(unsigned long type, short id, const char* format, ...);

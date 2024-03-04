@@ -20,15 +20,14 @@
 #include "MacTCP.h"
 #include "VNCEncoder.h"
 
+asm Boolean getChunkMonochrome(int x, int y, int w, int h, wdsEntry *wdsPtr);
+
 class VNCEncodeTRLE {
     public:
         static Size minBufferSize();
+        static void begin();
 
-        static unsigned long encodeTile(const unsigned char *src, char rows, char cols, unsigned char *dst, unsigned long bytesAvail, Boolean allowPaletteReuse);
-
-        static int begin();
-        static Boolean getChunk(int x, int y, int w, int h, wdsEntry *wds);
-
-        static long getEncoding() {return mTRLEEncoding;}
+        static unsigned long encodeSolidTile(const EncoderPB &epb);
+        static unsigned long encodeTile(const EncoderPB &pb);
 };
 

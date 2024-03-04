@@ -15,26 +15,16 @@
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
 
-#include <stdio.h>
-#include <string.h>
-#include <QDOffscreen.h>
-
 #include "GestaltUtils.h"
-#include "VNCServer.h"
-#include "VNCTypes.h"
-#include "VNCFrameBuffer.h"
-#include "VNCPalette.h"
-#include "VNCEncoder.h"
-#include "msgbuf.h"
+#include "DialogUtils.h"
 
-int ShowStatus(const char* format, ...);
+#include "VNCServer.h"
+#include "VNCPalette.h"
+#include "VNCFrameBuffer.h"
 
 const unsigned long &ScrnBase = *(unsigned long*) 0x824;
 
 BitMap vncBits = {0};
-//PixPatHandle deskPat;
-
-unsigned long ctSeed;
 
 #ifndef VNC_FB_WIDTH
     unsigned int  fbStride;
@@ -45,23 +35,22 @@ unsigned long ctSeed;
     unsigned long fbDepth;
 #endif
 
-VNCPixelFormat     pendingPixFormat;
-VNCPixelFormat     fbPixFormat;
-unsigned char   *fbUpdateBuffer;
-
-//unsigned long LMGetDeskHook() {return * (unsigned long*) 0xA6C;}
-
 OSErr VNCFrameBuffer::setup() {
-    ctSeed = 10;
-    if(checkScreenResolution()) {
+    if (checkScreenResolution()) {
         vncBits.baseAddr = (Ptr) ScrnBase;
     }
     #if defined(VNC_FB_MONOCHROME)
         else {
+            #ifdef VNC_FB_WIDTH
+                const unsigned int fbWidth = VNC_FB_WIDTH;
+            #endif
+            #ifdef VNC_FB_HEIGHT
+                const unsigned int fbHeight = VNC_FB_HEIGHT;
+            #endif
             // We are on a color Mac, create a virtual B&W map
-            vncBits.rowBytes = VNC_FB_WIDTH/8;
-            vncBits.baseAddr = NewPtr((unsigned long)VNC_FB_WIDTH/8 * VNC_FB_HEIGHT);
-            SetRect(&vncBits.bounds, 0, 0, VNC_FB_WIDTH, VNC_FB_HEIGHT);
+            vncBits.rowBytes = fbWidth/8;
+            vncBits.baseAddr = NewPtr((unsigned long)fbWidth/8 * fbHeight);
+            SetRect(&vncBits.bounds, 0, 0, fbWidth, fbHeight);
             OSErr err = MemError();
             if (err != noErr)
                 return err;
@@ -69,25 +58,12 @@ OSErr VNCFrameBuffer::setup() {
     #endif
 
     // Create the color palette
-    #ifdef VNC_FB_BITS_PER_PIX
-        const unsigned char fbDepth = VNC_FB_BITS_PER_PIX;
-    #endif
 
     OSErr err = VNCPalette::setup();
     if (err != noErr)
         return err;
 
-    if(HasColorQD()) {
-        //LMSetDeskHook(NULL);
-        // Set a solid background
-        //deskPat = GetPixPat(128);
-        //DetachResource((Handle)deskPat);
-        //dprintf("DeskHook: %ld\n", LMGetDeskHook());
-        //SetDeskCPat(deskPat);
-        //dprintf("DeskHook: %ld\n", LMGetDeskHook());
-    }
-
-    copy();
+    idleTask();
     return noErr;
 }
 
@@ -97,10 +73,6 @@ OSErr VNCFrameBuffer::destroy() {
         vncBits.baseAddr = 0;
     }
     VNCPalette::destroy();
-    if(hasColorQD) {
-        //SetDeskCPat(NULL);
-        //DisposePixPat(deskPat);
-    }
     return noErr;
 }
 
@@ -126,18 +98,18 @@ Boolean VNCFrameBuffer::checkScreenResolution() {
 
     #if defined(VNC_FB_WIDTH) && defined(VNC_FB_HEIGHT) && defined(VNC_FB_BITS_PER_PIX)
         Boolean isMatch = gdWidth == VNC_FB_WIDTH && gdHeight == VNC_FB_HEIGHT && gdDepth == VNC_FB_BITS_PER_PIX;
-        if(!isMatch) {
-            dprintf("-This build of Mini VNC will only work at %d x %d with %d colors.", VNC_FB_WIDTH, VNC_FB_HEIGHT, VNC_FB_PALETTE_SIZE);
+        if (!isMatch) {
+            ShowAlert('ERR', 128, "This build of Mini VNC will only work at %d x %d with %d colors.", VNC_FB_WIDTH, VNC_FB_HEIGHT, VNC_FB_PALETTE_SIZE);
         }
     #elif defined(VNC_FB_BITS_PER_PIX)
         Boolean isMatch = gdDepth == VNC_FB_BITS_PER_PIX;
-        if(!isMatch) {
-            dprintf("-This build of Mini VNC will only work with %d colors.", VNC_FB_PALETTE_SIZE);
+        if (!isMatch) {
+            ShowAlert('ERR', 128, "This build of Mini VNC will only work with %d colors.", VNC_FB_PALETTE_SIZE);
         }
     #else
         Boolean isMatch = (gdDepth == 1) || (gdDepth == 2) || (gdDepth == 4) || (gdDepth == 8);
-        if(!isMatch) {
-            dprintf("-Please set your monitor to Black & White, 4, 16 or 256 grays or colors.");
+        if (!isMatch) {
+            ShowAlert('ERR', 128, "Please set your monitor to Black & White, 4, 16 or 256 grays or colors.");
         }
     #endif
 
@@ -154,101 +126,12 @@ Boolean VNCFrameBuffer::checkScreenResolution() {
     return isMatch;
 }
 
-void VNCFrameBuffer::copy() {
+void VNCFrameBuffer::idleTask() {
     #if defined(VNC_FB_MONOCHROME)
-        if(vncBits.baseAddr && vncBits.baseAddr != (Ptr) ScrnBase) {
+        if (vncBits.baseAddr && (vncBits.baseAddr != (Ptr) ScrnBase)) {
             // We are on a color Mac, do a dithered copy
             CopyBits(&qd.screenBits, &vncBits, &vncBits.bounds, &vncBits.bounds, srcCopy, NULL);
         }
-    #endif
-}
-
-void VNCFrameBuffer::idleTask() {
-    #if !defined(VNC_FB_MONOCHROME)
-        if(hasColorQD) {
-            // Find the color table associated with the device
-            GDHandle gdh = GetMainDevice();
-            PixMapHandle gpx = (*gdh)->gdPMap;
-            CTabHandle gct = (*gpx)->pmTable;
-
-            // If the color table has changed, inform the interrupt routine
-            if(gct && (*gct)->ctSeed != ctSeed) {
-                vncFlags.fbColorMapNeedsUpdate = true;
-            }
-        }
-    #endif
-}
-
-void VNCFrameBuffer::fbSyncTasks() {
-    if(!vncBits.baseAddr) return;
-
-    #if !defined(VNC_FB_MONOCHROME)
-
-        // Handle any changes to the pixel format
-
-        if (pendingPixFormat.bitsPerPixel) {
-            memcpy(&fbPixFormat, &pendingPixFormat, sizeof(VNCPixelFormat));
-            pendingPixFormat.bitsPerPixel = 0;
-            bytesPerCPixel = fbPixFormat.bitsPerPixel / 8;
-
-            if(fbPixFormat.trueColor) {
-                // Determine representation of CPIXEL
-
-                const unsigned long colorBits = ((unsigned long)fbPixFormat.redMax   << fbPixFormat.redShift) |
-                                                ((unsigned long)fbPixFormat.greenMax << fbPixFormat.greenShift) |
-                                                ((unsigned long)fbPixFormat.blueMax  << fbPixFormat.blueShift);
-
-                if((fbPixFormat.bitsPerPixel == 32) && (colorBits == 0x00FFFFFF)) {
-                    bytesPerCPixel = 3;
-                }
-
-                dprintf("Bytes per CPIXEL %d (ColorBits: %lx)\n", bytesPerCPixel, colorBits);
-            }
-            VNCPalette::preparePaletteRoutines();
-            vncFlags.fbColorMapNeedsUpdate = true;
-        }
-
-        if(!hasColorQD) return;
-
-        // Handle any changes to the color palette
-
-        if (vncFlags.fbColorMapNeedsUpdate) {
-            // Find the color table associated with the device
-            GDHandle gdh = GetMainDevice();
-            PixMapHandle gpx = (*gdh)->gdPMap;
-            CTabHandle gct = (*gpx)->pmTable;
-            if(gct) {
-                #ifdef VNC_FB_BITS_PER_PIX
-                    const unsigned char fbDepth = VNC_FB_BITS_PER_PIX;
-                #endif
-                const unsigned int paletteSize = 1 << fbDepth;
-
-                if(paletteSize == ((*gct)->ctSize + 1)) {
-                    // Store a copy of the indexed color table so that
-                    // the interrupt routine can find it
-                    for(unsigned int  i = 0; i < paletteSize; i++) {
-                        const RGBColor &rgb = (*gct)->ctTable[i].rgb;
-                        VNCPalette::setColor(i, rgb.red, rgb.green, rgb.blue);
-                    }
-                    ctSeed = (*gct)->ctSeed;
-                    // Grab the white and black indices
-                    GrafPtr savedPort;
-                    GetPort (&savedPort);
-                    CGrafPort cPort;
-                    OpenCPort(&cPort);
-                    VNCPalette::black = cPort.fgColor;
-                    VNCPalette::white = cPort.bkColor;
-                    CloseCPort(&cPort);
-                    SetPort(savedPort);
-
-                    dprintf("Color palette ready (size:%d b:%d w:%d)\n", paletteSize, VNCPalette::black, VNCPalette::white);
-                } else {
-                    dprintf("Palette size mismatch!\n");
-                }
-            } else {
-                dprintf("Failed to get graphics device!\n");
-            }
-        } // vncFlags.fbColorMapNeedsUpdate
     #endif
 }
 

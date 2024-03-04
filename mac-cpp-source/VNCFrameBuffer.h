@@ -31,20 +31,16 @@
 
 
 extern BitMap vncBits;
-extern VNCPixelFormat fbPixFormat, pendingPixFormat;
-extern unsigned char  *fbUpdateBuffer;
 
 class VNCFrameBuffer {
     public:
         static OSErr setup();
         static OSErr destroy();
-        static void  copy();
+        static void  idleTask();
         static void  fill();
         static unsigned char *getBaseAddr();
         static Boolean checkScreenResolution();
         static Boolean hasColorQuickdraw();
-        static void fbSyncTasks();
-        static void idleTask();
 
         static unsigned char *getPixelAddr(unsigned int x, unsigned int y) {
             #if !defined(VNC_BYTES_PER_LINE) && !defined(VNC_FB_BITS_PER_PIX)

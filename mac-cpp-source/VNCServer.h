@@ -18,6 +18,16 @@
 #include "VNCConfig.h"
 #include "VNCTypes.h"
 
+enum VNCState {
+    VNC_STOPPED,
+    VNC_STARTING,
+    VNC_WAITING,
+    VNC_CONNECTED,
+    VNC_RUNNING,
+    VNC_STOPPING,
+    VNC_ERROR
+};
+
 struct VNCFlags {
     unsigned short fbColorMapNeedsUpdate : 1;
     unsigned short fbUpdateInProgress : 1;
@@ -28,17 +38,23 @@ struct VNCFlags {
     unsigned short clientTakesZRLE : 1;
     unsigned short clientTakesCursor : 1;
     unsigned short forceVNCAuth : 1;
+    unsigned short zLibLoaded : 1;
 };
 
-extern VNCConfig vncConfig;
-extern VNCFlags vncFlags;
-extern Point vncLastMousePosition;
-extern Boolean runFBSyncedTasks;
-extern pascal void vncFBSyncTasksDone();
+extern VNCState       vncState;
+extern VNCConfig      vncConfig;
+extern VNCFlags       vncFlags;
+extern Point          vncLastMousePosition;
+
+extern VNCRect        fbUpdateRect;
+
+extern Boolean        runFBSyncedTasks;
+extern pascal void    vncFBSyncTasksDone();
 
 OSErr vncServerStart();
 OSErr vncServerStop();
 OSErr vncServerError();
+void vncServerIdleTask();
 Boolean vncServerStopped();
 Boolean vncServerActive();
 
@@ -89,7 +105,6 @@ Boolean vncServerActive();
 
 #define VNC_FB_PIX_PER_BYTE (8 / VNC_FB_BITS_PER_PIX)
 #define VNC_FB_PALETTE_SIZE (1 << VNC_FB_BITS_PER_PIX)
-#define BYTES_PER_TILE_ROW  (2 * VNC_FB_BITS_PER_PIX)
 
 #ifdef VNC_FB_WIDTH
     #define VNC_BYTES_PER_LINE (VNC_FB_WIDTH / VNC_FB_PIX_PER_BYTE)
@@ -97,3 +112,12 @@ Boolean vncServerActive();
 
 #define min(A,B) ((A) < (B) ? (A) : (B))
 #define max(A,B) ((A) > (B) ? (A) : (B))
+
+#define ZERO_ANY(T, a, n) do{\
+   T *a_ = (a);\
+   size_t n_ = (n);\
+   for (; n_ > 0; --n_, ++a_)\
+     *a_ = (T) 0;\
+} while (0)
+
+typedef unsigned long size_t;

@@ -14,7 +14,6 @@
  *   To view a copy of the GNU General Public License, go to the following  *
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
-#include <string.h>
 
 #include "VNCServer.h"
 #include "VNCFrameBuffer.h"
@@ -26,13 +25,13 @@ Size VNCEncodeRaw::minBufferSize() {
     return 0;
 }
 
-int VNCEncodeRaw::begin() {
+void VNCEncodeRaw::begin() {
     line = 0;
-    return EncoderOk;
 }
 
-Boolean VNCEncodeRaw::getChunk(int x, int y, int w, int h, wdsEntry *wds) {
-    wds->length = w;
-    wds->ptr = (Ptr) VNCFrameBuffer::getPixelAddr(x, y + line);
+Boolean VNCEncodeRaw::getChunk(EncoderPB &epb) {
+    const unsigned char *src = VNCFrameBuffer::getPixelAddr(fbUpdateRect.x, fbUpdateRect.y + line);
+    BlockMove(src, epb.dst, fbUpdateRect.w);
+    epb.bytesWritten = fbUpdateRect.w;
     return ++line < h;
 }

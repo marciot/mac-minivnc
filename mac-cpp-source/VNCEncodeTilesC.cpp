@@ -18,8 +18,6 @@
 #include "VNCFrameBuffer.h"
 #include "VNCEncodeTiles.h"
 
-#include <stdio.h>
-
 #if !USE_ASM_CODE
 
 #define ROL(A,B) ((A << B) | (A >> (sizeof(A)*8 - B)))
@@ -249,11 +247,11 @@ unsigned short nativeToRle(const unsigned char *src, unsigned char *end, unsigne
     }
 
     if(cInfo->packRuns && (cInfo->colorSize != 1)) {
-        printf("Invalid color size!!\n");
+        dprintf("Invalid color size!!\n");
     }
 
     if(dst > stop) {
-        printf("Nothing to do!\n");
+        dprintf("Nothing to do!\n");
     }
 
     Boolean done = false;

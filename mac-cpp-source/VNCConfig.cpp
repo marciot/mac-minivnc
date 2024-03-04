@@ -15,12 +15,13 @@
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
 
-#include "msgbuf.h"
 #include "VNCConfig.h"
+
+#include "DebugLog.h"
 
 VNCConfig vncConfig = {
     1,            // Major version
-    1,            // Minor version
+    3,            // Minor version
     true,         // allowStreaming
     true,         // allowIncremental
     true,         // allowControl
@@ -31,8 +32,9 @@ VNCConfig vncConfig = {
     true,         // allowZRLE
     false,        // autoRestart
     false,        // forceVNCAuth
+    false,        // enableLogging
     5,            // zLibCompression
-    "Macintosh",  // Session name
+    "\pMacintosh",// Session name
     5900,         // tcpPort
     'µVNC'        // Validation
 };

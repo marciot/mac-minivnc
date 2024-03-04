@@ -15,17 +15,40 @@
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
 
-#pragma once
+#include <stdio.h>
+#include <string.h>
+#include <stdarg.h>
 
-#include "MacTCP.h"
-#include "VNCEncoder.h"
+#include "DialogUtils.h"
 
-class VNCEncodeHextile {
-    public:
-        static Size minBufferSize();
+void ShowStatus(const char* format, ...) {
+    Str255 pStr;
+    va_list argptr;
+    va_start(argptr, format);
+    vsprintf((char*)pStr + 1, format, argptr);
+    va_end(argptr);
+    const short len = strlen((char*)pStr + 1);
+    pStr[0] = pStr[len] == '\n' ? len - 1 : len;
+    ShowStatus(pStr);
+}
 
-        static void begin();
-        static unsigned long encodeSolidTile(const EncoderPB &epb);
-        static unsigned long encodeTile(const EncoderPB &epb);
-};
+void SetDialogTitle(const char* format, ...) {
+    Str255 pStr;
+    va_list argptr;
+    va_start(argptr, format);
+    vsprintf((char*)pStr + 1, format, argptr);
+    va_end(argptr);
+    const short len = strlen((char*)pStr + 1);
+    pStr[0] = pStr[len] == '\n' ? len - 1 : len;
+    SetDialogTitle(pStr);
+}
 
+int ShowAlert(unsigned long type, short id, const char* format, ...) {
+    Str255 pStr;
+    va_list argptr;
+    va_start(argptr, format);
+    vsprintf((char*)pStr + 1, format, argptr);
+    va_end(argptr);
+    pStr[0] = strlen((char*)pStr + 1);
+    return ShowAlert(type, id, pStr);
+}

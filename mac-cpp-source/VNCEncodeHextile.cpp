@@ -14,32 +14,28 @@
  *   To view a copy of the GNU General Public License, go to the following  *
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
-#include <string.h>
 
 #include "VNCServer.h"
 #include "VNCPalette.h"
 #include "VNCEncodeTiles.h"
-#include "VNCFrameBuffer.h"
 #include "VNCEncodeHextile.h"
-#include "msgbuf.h"
 
-#include <stdlib.h>
+#include "DebugLog.h"
 
 #define UPDATE_BUFFER_SIZE 1040
 #define UPDATE_MAX_TILES   7
+#define DEBUG_SUBRECTS     0
 
-extern int tile_x, tile_y;
+#define src32 ((unsigned long*)src)
+
 unsigned int lastBg, lastFg;
 
 Size VNCEncodeHextile::minBufferSize() {
-        return UPDATE_BUFFER_SIZE;
+    return UPDATE_BUFFER_SIZE;
 }
 
-int VNCEncodeHextile::begin() {
-    tile_x = 0;
-    tile_y = 0;
+void VNCEncodeHextile::begin() {
     lastBg = lastFg = -1;
-    return EncoderOk;
 }
 
 #if !defined(VNC_FB_MONOCHROME)
@@ -71,17 +67,33 @@ int VNCEncodeHextile::begin() {
                (candidate->b++, true));
     }
 
-    static unsigned short encodeTile(const unsigned char *src, char rows, char cols, unsigned char *dst, unsigned long bytesAvail) {
-        unsigned char *start = dst;
-        unsigned char nativeTile[256];
-        unsigned char *rleTile = dst + 1;
+    unsigned long VNCEncodeHextile::encodeSolidTile(const EncoderPB &epb) {
+        const unsigned char mask  = ((1 << fbDepth) - 1);
+        const unsigned char color = epb.src[0] & mask;
+        unsigned char *dst = epb.dst;
+        *dst++ = BackgroundSpecified;
+        setupPIXEL();
+        emitColor(dst, color);
+        return dst - epb.dst;
+    }
+
+    unsigned long VNCEncodeHextile::encodeTile(const EncoderPB &epb) {
+        unsigned char *start = epb.dst;
+        unsigned char *dst = epb.dst;
+        unsigned char *src = epb.src;
+
+        unsigned char scratchSpace[768 +  ALIGN_PAD];
+        unsigned char *nativeTile = ALIGN_LONG(scratchSpace);
+        unsigned char    *rleTile = nativeTile + 256;
+
+        setupPIXEL();
 
         ColorInfo info;
         info.nColors = 256;
         info.colorSize = 1;
-        info.packRuns   = false;
-        const unsigned long nativeLen = screenToNative(src, nativeTile, rows, cols, 0);
-        const unsigned long len = nativeToRle(nativeTile, nativeTile + nativeLen, rleTile, rleTile + 512, fbDepth, &info) + 1;
+        info.packRuns = false;
+        const unsigned long nativeLen = screenToNative(epb.src, nativeTile, epb.rows, epb.cols, 0);
+        const unsigned long len = nativeToRle(nativeTile, nativeTile + nativeLen, rleTile, rleTile + 512, fbDepth, &info);
 
         struct RLEPair {
             unsigned char color;
@@ -99,22 +111,22 @@ int VNCEncodeHextile::begin() {
         unsigned char cRects[16] = {0};
         unsigned short rleCount = rle->count + 1;
         unsigned char  rleColor = rle->color;
-        for(int y = 0; y < rows; y++)
-        for(int x = 0; x < cols; ) {
-            if((rleCount >= cols) && (x == 0)) {
-                const unsigned char h = rleCount / cols;
+        for(int y = 0; y < epb.rows; y++)
+        for(int x = 0; x < epb.cols; ) {
+            if((rleCount >= epb.cols) && (x == 0)) {
+                const unsigned char h = rleCount / epb.cols;
                 lastRect->c = rleColor;
                 lastRect->x = 0;
                 lastRect->y = y;
-                lastRect->w = cols - 1;
+                lastRect->w = epb.cols - 1;
                 lastRect->h(h - 1);
-                rleCount -= h * cols;
+                rleCount -= h * epb.cols;
                 y += h;
-                if(y == rows) {
-                    cols = 0; // Force inner loop to exit
+                if(y == epb.rows) {
+                    x = epb.cols; // Force inner loop to exit
                 }
             } else {
-                const unsigned char w = min(rleCount, cols - x);
+                const unsigned char w = min(rleCount, epb.cols - x);
                 lastRect->c = rleColor;
                 lastRect->x = x;
                 lastRect->y = y;
@@ -124,7 +136,7 @@ int VNCEncodeHextile::begin() {
                 x        += w;
             }
             if (!mergeTop(sRects, lastRect, cRects)) {
-                cRects[x] = lastRect - sRects;  // Record subrect in column lookup table
+                cRects[lastRect->x] = lastRect - sRects;  // Record subrect in column lookup table
                 histogram[ rleColor ]++;        // Tally color
                 lastRect++;                     // Move to next tile
             }
@@ -161,17 +173,16 @@ int VNCEncodeHextile::begin() {
         const unsigned int nFgRects = nRects - bgCount;
 
         // Figure out colors
-        const unsigned char bytesPerPixel = fbPixFormat.bitsPerPixel >> 3;
 
         if (nColors > 1) {
-            const unsigned int rawTileLen = 1 + 256 * bytesPerPixel;
+            const unsigned int rawTileLen = 1 + 256 * bytesPerColor;
 
             // Emit two-colored tiles with subrects
-            if(nColors == 2) {
+            if (nColors == 2) {
                 const unsigned char emitBgColor = (lastBg != bgColor);
                 const unsigned char emitFgColor = (lastFg != fgColor);
-                unsigned long twoColorTileLen = ((unsigned int)emitBgColor + emitFgColor) + bytesPerPixel * 2 + nFgRects * 2;
-                if ((twoColorTileLen <= rawTileLen) && (twoColorTileLen <= bytesAvail)) {
+                unsigned long twoColorTileLen = 2 + (emitBgColor + emitFgColor) * bytesPerColor + nFgRects * 2;
+                if ((twoColorTileLen <= rawTileLen) && (twoColorTileLen <= epb.bytesAvail)) {
                     *dst++ = AnySubrects;
                     if(emitBgColor) {
                         *start |= BackgroundSpecified;
@@ -202,8 +213,8 @@ int VNCEncodeHextile::begin() {
             // Emit multi-colored tiles with subrects
             else {
                 const unsigned char emitBgColor = (lastBg != bgColor);
-                const unsigned long multiColorTileLen = ((unsigned int)2) + (emitBgColor && bytesPerPixel) + (nFgRects * (2 + bytesPerPixel));
-                if ((multiColorTileLen <= rawTileLen) && (multiColorTileLen <= bytesAvail)) {
+                const unsigned long multiColorTileLen = 2 + (emitBgColor * bytesPerColor) + (nFgRects * (2 + bytesPerColor));
+                if ((multiColorTileLen <= rawTileLen) && (multiColorTileLen <= epb.bytesAvail)) {
                     *dst++ = AnySubrects | SubrectsColored;
                     if(lastBg != bgColor) {
                         *start |= BackgroundSpecified;
@@ -213,7 +224,11 @@ int VNCEncodeHextile::begin() {
                     *dst++ = nFgRects;
                     for(int i = 0; i < nRects; i++) {
                         if(sRects[i].c != bgColor) {
-                            emitColor(dst, sRects[i].c);
+                            #if DEBUG_SUBRECTS
+                                emitColor(dst, (i * 7) % (1 << fbDepth));
+                            #else
+                                emitColor(dst, sRects[i].c);
+                            #endif
                             *dst++ = (sRects[i].x << 4) | sRects[i].y;
                             *dst++ = (sRects[i].w << 4) | sRects[i].h();
                         }
@@ -228,87 +243,59 @@ int VNCEncodeHextile::begin() {
                 }
             }
 
-            if (rawTileLen <= bytesAvail) {
+            if (rawTileLen <= epb.bytesAvail) {
                 // If we get here, emit a raw tile
-
-                // Move data to end of buffer to make way for color expansion
-                unsigned char *copyTo = dst - len + UPDATE_BUFFER_SIZE;
-                BlockMove(dst, copyTo, len);
-
-                // Rewrite the tile with expanded colors
                 *dst++ = Raw;
-                for (unsigned char *c = copyTo+1, *end = copyTo + len; c != end;) {
-                    unsigned char color = *c++, count = *c++ + 1;
-                    while(count--) emitColor(dst, color);
-                    #if USE_SANITY_CHECKS
-                        if(dst >= c) dprintf("Overrrun!\n");
-                    #endif
+                const Boolean canEmitNativeTileAsRaw = (fbDepth == 8) && (!fbPixFormat.trueColor);
+                if(canEmitNativeTileAsRaw) {
+                    BlockMove(nativeTile,dst,nativeLen);
+                    dst += nativeLen;
+                } else {
+                    // Emit a raw tile
+                    src = nativeTile;
+                    // Rewrite the tile with expanded colors
+                    const unsigned char rsft = 32 - fbDepth;
+                    const unsigned long lmask = ((unsigned long)-1) << rsft; // Mask for leftmost color in block
+                    unsigned char bitsLeft = 0;
+                    unsigned long packed;
+                    unsigned short pixels = epb.rows * epb.cols;
+                    do {
+                        if(bitsLeft == 0) {
+                            packed = *src32++;
+                            bitsLeft = 32;
+                        }
+                        emitColor(dst, (packed & lmask) >> rsft);
+                        packed <<= fbDepth;
+                        bitsLeft -= fbDepth;
+                    } while(--pixels);
                 }
 
                 lastBg = lastFg = -1;
                 #if USE_SANITY_CHECKS
                     if (rawTileLen != (dst - start)) {
-                        dprintf("Incorrect tile %d length: %ld != %ld\n", start[0], rawTileLen, (dst - start));
+                        dprintf("Incorrect tile %d length: %d != %ld\n", start[0], rawTileLen, (dst - start));
+                    }
+                #endif
+                return dst - start;
+            }
+        } else {
+            // Otherwise emit a solid tile
+            const unsigned short solidTileLen = 1 + ((lastBg == bgColor) ? 0 : bytesPerColor);
+            if (solidTileLen <= epb.bytesAvail) {
+                *dst++ = 0;
+                if(lastBg != bgColor) {
+                    *start = BackgroundSpecified;
+                    emitColor(dst, bgColor);
+                    lastBg = bgColor;
+                }
+                #if USE_SANITY_CHECKS
+                    if (solidTileLen != (dst - start)) {
+                        dprintf("Incorrect tile %d length: %d != %ld\n", start[0], solidTileLen, (dst - start));
                     }
                 #endif
                 return dst - start;
             }
         }
-
-        // Otherwise emit a solid tile
-
-        *dst++ = 0;
-        if(lastBg != bgColor) {
-            *start = BackgroundSpecified;
-            emitColor(dst, bgColor);
-            lastBg = bgColor;
-            return dst - start;
-        } else {
-            return 1;
-        }
-    }
-
-    Boolean VNCEncodeHextile::getChunk(int x, int y, int w, int h, wdsEntry *wds) {
-        unsigned char *dst = fbUpdateBuffer, *src, rows, cols;
-
-        const unsigned char bytesPerPixel = fbPixFormat.bitsPerPixel >> 3;
-        const unsigned int  maxTileSize   = 1 + 256 * bytesPerPixel;
-
-        unsigned long bytesAvail = UPDATE_BUFFER_SIZE;
-
-        goto beginLoop;
-
-        while (bytesAvail > maxTileSize) {
-            const unsigned long len = encodeTile(src, rows, cols, dst, bytesAvail);
-            bytesAvail -= len;
-            dst += len;
-
-            // Advance to next tile in row
-            #ifdef VNC_FB_BITS_PER_PIX
-                src += BYTES_PER_TILE_ROW;
-            #else
-                src += 2 * fbDepth;
-            #endif
-            tile_x += 16;
-            cols = min(16, w - tile_x);
-            if (tile_x < w)
-                continue;
-
-            // Prepare for the next row
-            tile_y += 16;
-            if (tile_y >= h)
-                break;
-            tile_x = 0;
-
-        beginLoop:
-            cols = min(16, w - tile_x);
-            rows = min(16, h - tile_y);
-            src = VNCFrameBuffer::getPixelAddr(x + tile_x, y + tile_y);
-        }
-
-        wds->length = dst - fbUpdateBuffer;
-        wds->ptr = (Ptr) fbUpdateBuffer;
-
-        return tile_y < h;
+        return 0;
     }
 #endif

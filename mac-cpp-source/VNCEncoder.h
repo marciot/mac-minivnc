@@ -21,26 +21,51 @@
 #include "VNCFrameBuffer.h"
 
 enum {
-    EncoderOk = 0,
-    EncoderNeedsCompression = 1,
-    EncoderDefer = 2,
+    EncoderDefer = 0,
+    EncoderReady = 1,
     EncoderError = -1
+};
+
+struct EncoderPB {
+    unsigned int rows, cols;
+    unsigned char *src;
+    unsigned char *dst;
+    unsigned long bytesAvail;
+    unsigned long bytesWritten;
 };
 
 class VNCEncoder {
     public:
         static OSErr setup();
         static OSErr destroy();
+        static OSErr freeMemory();
+
         static void clear();
         static int begin();
         static void clientEncoding(unsigned long encoding, Boolean hasMore);
         static unsigned long getEncoding();
         static char *getEncoderName(unsigned long encoding);
-        static Boolean getChunk(int x, int y, int w, int h, wdsEntry *wds);
+        static Boolean getUncompressedChunk(EncoderPB &epb);
+        static Boolean getChunk(wdsEntry *wds);
+        static OSErr fbSyncTasks();
 
+        static int encoderSetup();
+
+        static OSErr compressSetup();
         static void compressBegin();
         static void compressReset();
-        static void fbSyncTasks();
+        static void compressDestroy();
 
+        static unsigned int numOfSubrects();
+        static void getSubrect(VNCRect *rect);
+        static Boolean isNewSubrect();
+
+        static Boolean getCompressedChunk(EncoderPB &epb);
         static Boolean getCompressedChunk(wdsEntry *wds);
 };
+
+extern unsigned char selectedEncoder;
+extern unsigned char *fbUpdateBuffer;
+
+#define ALIGN_PAD 3
+#define ALIGN_LONG(PTR) (PTR) + (sizeof(unsigned long) - (unsigned long)(PTR) % sizeof(unsigned long))

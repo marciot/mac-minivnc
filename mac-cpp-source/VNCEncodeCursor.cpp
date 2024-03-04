@@ -14,11 +14,10 @@
  *   To view a copy of the GNU General Public License, go to the following  *
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
-#include <stdio.h>
 
 #include "VNCServer.h"
-#include "VNCFrameBuffer.h"
 #include "VNCPalette.h"
+#include "VNCEncoder.h"
 #include "VNCEncodeCursor.h"
 
 unsigned long cursorChecksum;
@@ -70,6 +69,8 @@ Boolean VNCEncodeCursor::getChunk(wdsEntry *wds) {
 
     unsigned char *dst = fbUpdateBuffer + sizeof(VNCFBUpdateRect);
 
+    setupPIXEL();
+
     // Send the pixel values for the cursor
     for(int y = 0; y < 16; y++) {
         unsigned short bits = TheCrsr[y];
@@ -94,4 +95,32 @@ Boolean VNCEncodeCursor::getChunk(wdsEntry *wds) {
     wds->length = dst - fbUpdateBuffer;
     wds->ptr = (Ptr) fbUpdateBuffer;
     return 0;
+}
+
+void VNCEncodeCursor::adjustCursorVisibility (Boolean allowHiding) {
+    static Boolean hidden = false;
+
+    if(vncConfig.hideCursor && vncServerActive()) {
+        // If the user tried to move the mouse, unhide it.
+        Point mousePosition;
+        GetMouse(&mousePosition);
+        if((vncLastMousePosition.h != mousePosition.h) ||
+           (vncLastMousePosition.h != mousePosition.h)) {
+            allowHiding = false;
+        }
+
+        if((!hidden) && allowHiding) {
+            HideCursor();
+            hidden = true;
+        }
+    }
+
+    if(hidden && !(allowHiding && vncServerActive())) {
+        ShowCursor();
+        hidden = false;
+    }
+}
+
+void VNCEncodeCursor::idleTask() {
+    adjustCursorVisibility(true);
 }

@@ -15,13 +15,6 @@
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <console.h>
-
-#include <stdarg.h>
-#include <string.h>
-
 #include <Events.h>
 
 #include "MacTCP.h"
@@ -29,12 +22,15 @@
 #include "VNCServer.h"
 #include "VNCScreenHash.h"
 #include "VNCFrameBuffer.h"
+#include "VNCPalette.h"
 #include "VNCEncoder.h"
+#include "VNCEncodeCursor.h"
 #include "OSUtilities.h"
 #include "GestaltUtils.h"
-#include "msgbuf.h"
+#include "DebugLog.h"
+#include "DialogUtils.h"
 
-#include <SIOUX.h>
+#define DEBUG_SEGMENT_LOAD 0
 
 enum {
     mApple         = 32000,
@@ -65,50 +61,85 @@ enum {
     iControl       = 4,
     iHideCursor    = 5,
     iAutoRestart   = 6,
-    iRaw           = 7,
-    iHexTile       = 8,
-    iTRLE          = 9,
-    iZRLE          = 10
+    iEnableLogs    = 7,
+    iRaw           = 8,
+    iHexTile       = 9,
+    iTRLE          = 10,
+    iZRLE          = 11
 };
 
 Boolean gCancel = false;    /* this is set to true if the user cancels an operation */
 DialogPtr gDialog, gOptions;
-WindowPtr siouxWindow;
-Handle siouxMenuBar, ourMenuBar;
+Handle ourMenuBar;
 
-void SetUpSIOUX();
-void ShowStatus(const char* format, ...);
-void SetDialogTitle(const char* format, ...);
+#if USE_STDOUT
+    #include <SIOUX.h>
+
+    WindowPtr siouxWindow;
+    Handle siouxMenuBar;
+    void SetUpSIOUX();
+#endif
+
 void DoMenuEventPostSIOUX(EventRecord &event);
 Boolean DoEvent(EventRecord *event);
 void DoMenuSelection(long choice);
 ControlHandle FindCHndl(DialogPtr dlg, int item, short *type = NULL);
 OSErr StartServer();
+void CheckServerState();
 Boolean RunningAtStartup();
-int ShowAlert(unsigned long type, short id, const char* format, ...);
+void SetupMenuBar();
 void UpdateMenuState();
 void RefreshServerSettings();
-void AdjustCursorVisibility(Boolean allowHiding);
 Boolean ToggleWindowVisibility(WindowPtr whatWindow);
 
+#if DEBUG_SEGMENT_LOAD
+    MenuHandle checkLoadedSegments();
+#endif
+
 main() {
-    SetUpSIOUX();
+    // Setup the toolbox ourselves
+
+    InitGraf(&qd.thePort);
+    InitFonts();
+    InitWindows();
+    InitMenus();
+    TEInit();
+    InitDialogs(nil);
+    InitCursor();
+
+    /* Make sure we are running in a compatible resolution */
+    if (!VNCFrameBuffer::checkScreenResolution()) {
+        ExitToShell();
+    }
+
+    /* Load the user interface */
+    gDialog =  GetNewDialog(128, NULL, (WindowPtr) -1);
+    gOptions = GetNewDialog(131, NULL, (WindowPtr) -1);
+
+    ShowStatus("\pClick \"Start Server\" to begin.");
+
+    /* Load the configuration and disable modes that
+     * crash the Mac Plus */
 
     LoadPreferences();
 
-    // Disable modes that crash the Mac Plus
-    if(!HasColorQD()) {
+    if (!HasColorQD()) {
         vncConfig.allowRaw = false;
         vncConfig.allowHextile = false;
         vncConfig.allowZRLE = false;
     }
 
-    /* Create the new dialog */
-    gDialog =  GetNewDialog(128, NULL, (WindowPtr) -1);
-    gOptions = GetNewDialog(131, NULL, (WindowPtr) -1);
-
-    if(VNCFrameBuffer::checkScreenResolution())
-        ShowStatus("Click \"Start Server\" to begin.");
+    #if USE_STDOUT
+        if (vncConfig.enableLogging) {
+            SetUpSIOUX();
+            HideWindow(siouxWindow);
+        } else {
+            SetupMenuBar();
+        }
+    #else
+        SetupMenuBar();
+        vncConfig.enableLogging = false;
+    #endif
 
     #ifdef VNC_HEADLESS_MODE
         if(RunningAtStartup()) {
@@ -125,47 +156,48 @@ main() {
     while (!gCancel || !vncServerStopped()) {
         EventRecord event;
         EventGet(everyEvent, &event, 10, NULL);
-        #ifdef USE_STDOUT
-            if(!SIOUXHandleOneEvent(&event)) {
+        #if USE_STDOUT
+            if (vncConfig.enableLogging) {
+                if (!SIOUXHandleOneEvent(&event)) {
+                    DoEvent(&event);
+                } else { // Trap unhandled SIOUX menu events
+                    DoMenuEventPostSIOUX(event);
+                }
+            } else {
                 DoEvent(&event);
-            } else { // Trap unhandled SIOUX menu events
-                DoMenuEventPostSIOUX(event);
             }
         #else
             DoEvent(&event);
         #endif
-        switch(vncServerError()) {
-            case connectionClosing:
-            case connectionTerminated:
-                vncServerStop();
-                HiliteControl(FindCHndl(gDialog,iStart), 0);
-                EnableItem(GetMenuHandle(mServer), mStartServer);
-                dprintf("-User disconnected.\n\nClick \"Start Server\" to restart.\n");
-                break;
-            case noErr:
-                VNCFrameBuffer::copy();
-                break;
-            default:
-                ShowStatus("Error %d. Stopping.", vncServerError());
-                vncServerStop();
-                HiliteControl(FindCHndl(gDialog,iStart), 0);
-        }
-        AdjustCursorVisibility(true);
-        do_deferred_output();
+        CheckServerState();
+        VNCEncodeCursor::idleTask();
         VNCFrameBuffer::idleTask();
+        VNCPalette::idleTask();
+        vncServerIdleTask();
+        #if DEBUG_SEGMENT_LOAD
+            checkLoadedSegments();
+        #endif
         // Run tasks that need to happen right before a frame buffer update
         if(runFBSyncedTasks) {
             runFBSyncedTasks = false;
             dprintf("\n==== Starting FBSyncTasks ====\n");
-            VNCEncoder::fbSyncTasks();
-            VNCFrameBuffer::fbSyncTasks();
+            Boolean success = (VNCEncoder::fbSyncTasks() == noErr) &&
+                              (VNCPalette::fbSyncTasks() == noErr);
+            #if DEBUG_SEGMENT_LOAD
+                checkLoadedSegments();
+            #endif
             dprintf(  "==== FBSyncTasks Finished ====\n\n");
-            vncFBSyncTasksDone();
+            if (success) {
+                vncFBSyncTasksDone();
+            } else {
+                vncServerStop();
+            }
         }
-
+        do_deferred_output();
     }
 
-    AdjustCursorVisibility(false);
+    VNCEncodeCursor::adjustCursorVisibility(false);
+
     DisposeDialog(gDialog);
     gDialog = NULL;
 
@@ -181,6 +213,100 @@ main() {
     #endif
     return 0;
 }
+
+void CheckServerState() {
+    static VNCState lastState = VNC_STOPPED;
+    if (lastState != vncState) {
+        lastState = vncState;
+        switch (vncState) {
+            case VNC_WAITING:
+                ShowStatus("\pWaiting for connection");
+                break;
+            case VNC_RUNNING:
+                ShowStatus("\pConnection established!");
+                break;
+            case VNC_ERROR:
+                switch(vncServerError()) {
+                    case connectionClosing:
+                    case connectionTerminated:
+                        vncServerStop();
+                        HiliteControl(FindCHndl(gDialog,iStart), 0);
+                        EnableItem(GetMenuHandle(mServer), mStartServer);
+                        ShowStatus("\pUser disconnected.");
+                        break;
+                    case noErr:
+                        break;
+                    default:
+                        dprintf("Server error %d. Stopping.", vncServerError());
+                        ShowStatus("\pServer error. Stopping.");
+                        vncServerStop();
+                        HiliteControl(FindCHndl(gDialog,iStart), 0);
+                }
+        }
+    }
+}
+
+#if DEBUG_SEGMENT_LOAD
+    MenuHandle checkLoadedSegments() {
+        static MenuHandle segMenu = 0;
+        static Handle *segList = 0;
+
+        if (segMenu == NULL) {
+            const int segNum  = Count1Resources ('CODE');
+            segMenu = NewMenu (192, "\pSegments");
+            segList = (Handle*) NewPtr (segNum * sizeof(Handle));
+            SetResLoad(false);
+            for (int i = 1; i <= segNum; i++) {
+                Handle hndl = Get1IndResource('CODE', i);
+                if (hndl) {
+                    short id;
+                    ResType type;
+                    Str255 name;
+                    GetResInfo(hndl, &id, &type, name);
+                    AppendMenu (segMenu, name);
+                } else {
+                    AppendMenu (segMenu, "\pNULL");
+                }
+                segList[i-1] = hndl;
+            }
+            SetResLoad(true);
+        }
+
+        // Check whether the resources are loaded
+
+        if (segList) {
+            const int segNum = CountMItems(segMenu);
+            for (int i = 1; i <= segNum; i++) {
+                const Handle hndl = segList[i-1];
+                if (hndl) {
+                    short oldMark, newMark;
+                    SignedByte state = HGetState(hndl);
+                    const Boolean isPurgeable = (state & (1 << 6));
+                    const Boolean isFree      = /*(state == -109) ||*/ !!(*hndl == NULL);
+                    GetItemMark (segMenu, i, &oldMark);
+                    CheckItem (segMenu,   i, !isFree);
+                    if (isPurgeable) {
+                        SetItemMark (segMenu, i,'×');
+                    }
+                    GetItemMark (segMenu, i, &newMark);
+                    if (oldMark != newMark) {
+                        Str255 name;
+                        GetMenuItemText(segMenu, i, name);
+                        /*if (isPurgeable) {
+                            dprintf("Segment \"%#s\" set as purgeable\n", name);
+                        } else if (isFree) {
+                            dprintf("Segment \"%#s\" freed\n", name);
+                        } else {
+                            Size size = GetHandleSize(hndl);
+                            dprintf("Reserved %ld bytes to load segment \"%#s\"\n", size, name);
+                        }*/
+                    }
+                }
+            }
+        }
+        return segMenu;
+    }
+#endif
 
 Boolean DoEvent(EventRecord *event) {
     OSErr err;
@@ -220,7 +346,15 @@ Boolean DoEvent(EventRecord *event) {
                     if (window != FrontWindow()) {
                         SelectWindow(window);
                         event->what = nullEvent;
+                        #if USE_STDOUT
+                            if (window == siouxWindow) {
+                                SetMenuBar( siouxMenuBar);
+                            } else {
+                                SetMenuBar( ourMenuBar );
+                            }
+                        #endif
                     }
+                    break;
             }
             break;
         case nullEvent:
@@ -265,6 +399,12 @@ Boolean DoEvent(EventRecord *event) {
                     break;
                 case iAutoRestart:
                     vncConfig.autoRestart = value;
+                    break;
+                case iEnableLogs:
+                    #if USE_STDOUT
+                        vncConfig.enableLogging = value;
+                        if(vncConfig.enableLogging) SetUpSIOUX();
+                    #endif
                     break;
                 case iRaw:
                     vncConfig.allowRaw = value;
@@ -335,70 +475,90 @@ void RefreshServerSettings() {
     SetControlValue(FindCHndl(gOptions,iIncremental), vncConfig.allowIncremental);
     SetControlValue(FindCHndl(gOptions,iControl),     vncConfig.allowControl);
     SetControlValue(FindCHndl(gOptions,iAutoRestart), vncConfig.autoRestart);
+    #if USE_STDOUT
+        SetControlValue(FindCHndl(gOptions,iEnableLogs),  vncConfig.enableLogging);
+    #else
+        HiliteControl(FindCHndl(gOptions,iEnableLogs), 255);
+    #endif
 
     #ifndef VNC_HEADLESS_MODE
         HiliteControl(FindCHndl(gOptions,iAutoRestart), 255);
     #endif
 }
 
-void SetUpSIOUX() {
-    SIOUXSettings.autocloseonquit = TRUE;
-    SIOUXSettings.asktosaveonclose = FALSE;
-    SIOUXSettings.standalone = FALSE;
-    SIOUXSettings.leftpixel = 8;
-    SIOUXSettings.toppixel = 190;
-    SIOUXSettings.rows = 10;
-
-    // If MenuChoice is available, we can let SIOUX handle the menus,
-    // otherwise we have to handle it ourselves
-    SIOUXSettings.setupmenus = TrapAvailable(0xAA66);
-
-    // Force SIOUX to initialize
-    printf("Build date: " __DATE__ "\n\n");
-
-    printf("Started MiniVNC user interface\n");
-
-    SIOUXSetTitle("\pServer Logs");
-    siouxWindow = FrontWindow();
-
-    // Setup the menu bar
-    if(SIOUXSettings.setupmenus) {
-        // Add our custom menus right after the SIOUX menus
-
-        MenuHandle ourMenu = GetMenu(128);
-        InsertMenu(ourMenu, 0);
-        siouxMenuBar = GetMenuBar();
-
-        // Replace the Apple menu
-        ourMenuBar = GetNewMBar(128);
-        SetMenuBar( ourMenuBar );
-        AppendResMenu( GetMenuHandle( mApple ), 'DRVR' );
-    } else {
-        // Configure the menubar ourselves, SIOUX Edit menu will be non-functional
-        siouxMenuBar = ourMenuBar = GetNewMBar(128);
-        SetMenuBar( ourMenuBar );
-        DrawMenuBar();
-        AppendResMenu( GetMenuHandle( mApple ), 'DRVR' );
-    }
+void SetupMenuBar() {
+    // Configure the menubar ourselves, SIOUX Edit menu will be non-functional
+    ourMenuBar = GetNewMBar(128);
+    SetMenuBar( ourMenuBar );
+    AppendResMenu( GetMenuHandle( mApple ), 'DRVR' );
+    #if DEBUG_SEGMENT_LOAD
+        InsertMenu(checkLoadedSegments(), 0);
+    #endif
+    ReleaseResource(ourMenuBar);
+    ourMenuBar = GetMenuBar();
     DrawMenuBar();
-    HideWindow(siouxWindow);
 }
 
-void DoMenuEventPostSIOUX(EventRecord &event) {
-    if(!SIOUXSettings.setupmenus) return;
+#if USE_STDOUT
+    #include <stdio.h>
 
-    /* If MenuChoice is available, it is best to let SIOUX handle the menu
-     * event so Copy and Paste will work. We can check after the fact
-     * to see whether the user selected one of our menus using MenuChoice.
-     * However, if that trap is not available, we must handle the menu
-     * ourselves and certain menu items will not work
-     */
+    void SetUpSIOUX() {
+        // Setup SIOUX defaults
+        SIOUXSettings.initializeTB = FALSE;
+        SIOUXSettings.autocloseonquit = TRUE;
+        SIOUXSettings.asktosaveonclose = FALSE;
+        SIOUXSettings.standalone = FALSE;
+        SIOUXSettings.leftpixel = 8;
+        SIOUXSettings.toppixel = 190;
+        SIOUXSettings.rows = 10;
+        SIOUXSettings.setupmenus = false;
 
-    WindowPtr thisWindow;
-    if((event.what == mouseDown) && (FindWindow(event.where, &thisWindow) == inMenuBar)) {
-        DoMenuSelection(MenuChoice());
+        if (!siouxWindow) {
+            // If MenuChoice is available, we can let SIOUX handle the menus,
+            // otherwise we have to handle it ourselves
+            SIOUXSettings.setupmenus = TrapAvailable(0xAA66);
+
+            ClearMenuBar();
+            // Force SIOUX to initialize
+            printf("Build date: " __DATE__ "\n\n");
+
+            printf("Started MiniVNC user interface\n");
+
+            SIOUXSetTitle("\pServer Logs");
+            siouxWindow = FrontWindow();
+
+            // Setup the menu bar
+            if(SIOUXSettings.setupmenus) {
+                // Add our custom menus right after the SIOUX menus
+
+                MenuHandle ourMenu = GetMenu(128);
+                InsertMenu(ourMenu, 0);
+                siouxMenuBar = GetMenuBar();
+
+                SetupMenuBar();
+            } else {
+                SetupMenuBar();
+                siouxMenuBar = ourMenuBar;
+            }
+        }
     }
-}
+
+    void DoMenuEventPostSIOUX(EventRecord &event) {
+        if(!SIOUXSettings.setupmenus) return;
+
+        /* If MenuChoice is available, it is best to let SIOUX handle the menu
+         * event so Copy and Paste will work. We can check after the fact
+         * to see whether the user selected one of our menus using MenuChoice.
+         * However, if that trap is not available, we must handle the menu
+         * ourselves and certain menu items will not work
+         */
+
+        WindowPtr thisWindow;
+        if((event.what == mouseDown) && (FindWindow(event.where, &thisWindow) == inMenuBar)) {
+            DoMenuSelection(MenuChoice());
+        }
+    }
+#endif
 
 void DoMenuSelection(long choice) {
     Str255 daName;
@@ -406,24 +566,29 @@ void DoMenuSelection(long choice) {
     const int        itemNum = LoWord(choice);
     const MenuHandle hMenu   = GetMenuHandle(menuId);
 
+    #define _STRINGIFY(A) #A
+    #define STRINGIFY(A) _STRINGIFY(A)
+
     switch(menuId)  {
         case mApple:
             switch( itemNum ) {
                 case 1:
-                    if(FrontWindow() != siouxWindow) {
-                        ShowAlert(0, 130,
-                            "Built on " __DATE__
-                            #ifdef VNC_HEADLESS_MODE
-                                " for GitHub sponsors"
-                            #endif
-                            #if defined(VNC_FB_MONOCHROME)
-                                " for B&W Macs"
-                            #else
-                                " for Color Macs (TRLE%d)"
-                            #endif
-                            , VNC_COMPRESSION_LEVEL
-                        );
-                    }
+                    #if USE_STDOUT
+                        if(FrontWindow() == siouxWindow) {
+                            break;
+                        }
+                    #endif
+                    ShowAlert(0, 130,
+                        "\pBuilt on " __DATE__
+                        #ifdef VNC_HEADLESS_MODE
+                            " for GitHub sponsors"
+                        #endif
+                        #if defined(VNC_FB_MONOCHROME)
+                            " for B&W Macs"
+                        #else
+                            " for Color Macs (TRLE" STRINGIFY(VNC_COMPRESSION_LEVEL) ")"
+                        #endif
+                    );
                     break;
                 default:
                     GetMenuItemText( hMenu, itemNum, daName );
@@ -445,12 +610,18 @@ void DoMenuSelection(long choice) {
                     StartServer();
                     break;
                 case mLogs:
-                    if(ToggleWindowVisibility(siouxWindow)) {
-                        SetMenuBar( siouxMenuBar);
-                    } else {
-                        SetMenuBar( ourMenuBar );
-                    }
-                    DrawMenuBar();
+                    #if USE_STDOUT
+                        if (!siouxWindow) {
+                            SetUpSIOUX();
+                            break;
+                        }
+                        if (ToggleWindowVisibility(siouxWindow)) {
+                            SetMenuBar( siouxMenuBar);
+                        } else {
+                            SetMenuBar( ourMenuBar );
+                        }
+                        DrawMenuBar();
+                    #endif
                     break;
                 case mMainWindow:
                     ToggleWindowVisibility(gDialog);
@@ -480,8 +651,17 @@ Boolean ToggleWindowVisibility(WindowPtr whatWindow) {
 
 void UpdateMenuState() {
     const MenuHandle hMenu = GetMenuHandle(mServer);
-    CheckItem( hMenu, mLogs,       ((WindowPeek)siouxWindow)->visible );
     CheckItem( hMenu, mMainWindow, ((WindowPeek)gDialog)->visible );
+    #if USE_STDOUT
+        if (vncConfig.enableLogging) {
+            EnableItem(hMenu,  mLogs);
+            CheckItem( hMenu,  mLogs, ((WindowPeek)siouxWindow)->visible );
+        } else {
+            DisableItem(hMenu, mLogs);
+        }
+    #else
+        DisableItem(hMenu, mLogs);
+    #endif
 }
 
 OSErr StartServer() {
@@ -490,33 +670,10 @@ OSErr StartServer() {
         HiliteControl(FindCHndl(gDialog,iStart), 255);
         DisableItem(GetMenuHandle(mServer), mStartServer);
     } else {
-        ShowStatus("Error starting server %d.", err);
+        dprintf("Error %d starting server", err);
+        ShowStatus("\pError starting server");
     }
     return err;
-}
-
-void AdjustCursorVisibility(Boolean allowHiding) {
-    static Boolean hidden = false;
-
-    if(vncConfig.hideCursor && vncServerActive()) {
-        // If the user tried to move the mouse, unhide it.
-        Point mousePosition;
-        GetMouse(&mousePosition);
-        if((vncLastMousePosition.h != mousePosition.h) ||
-           (vncLastMousePosition.h != mousePosition.h)) {
-            allowHiding = false;
-        }
-
-        if((!hidden) && allowHiding) {
-            HideCursor();
-            hidden = true;
-        }
-    }
-
-    if(hidden && !(allowHiding && vncServerActive())) {
-        ShowCursor();
-        hidden = false;
-    }
 }
 
 ControlHandle FindCHndl(DialogPtr dlg, int item, short *type) {
@@ -527,35 +684,15 @@ ControlHandle FindCHndl(DialogPtr dlg, int item, short *type) {
     return hCntl;
 }
 
-void ShowStatus(const char* format, ...) {
-    Str255 pStr;
-    va_list argptr;
-    va_start(argptr, format);
-    vsprintf((char*)pStr + 1, format, argptr);
-    va_end(argptr);
-    const short len = strlen((char*)pStr + 1);
-    pStr[0] = pStr[len] == '\n' ? len - 1 : len;
+void ShowStatus(Str255 pStr) {
     SetDText(gDialog, iStatus, pStr);
 }
 
-void SetDialogTitle(const char* format, ...) {
-    Str255 pStr;
-    va_list argptr;
-    va_start(argptr, format);
-    vsprintf((char*)pStr + 1, format, argptr);
-    va_end(argptr);
-    const short len = strlen((char*)pStr + 1);
-    pStr[0] = pStr[len] == '\n' ? len - 1 : len;
+void SetDialogTitle(Str255 pStr) {
     SetWTitle(gDialog, pStr);
 }
 
-int ShowAlert(unsigned long type, short id, const char* format, ...) {
-    Str255 pStr;
-    va_list argptr;
-    va_start(argptr, format);
-    vsprintf((char*)pStr + 1, format, argptr);
-    va_end(argptr);
-    pStr[0] = strlen((char*)pStr + 1);
+int ShowAlert(unsigned long type, short id, Str255 pStr) {
     ParamText(pStr, "\p", "\p", "\p");
     switch(type) {
         case 'ERR': return StopAlert(id, NULL);

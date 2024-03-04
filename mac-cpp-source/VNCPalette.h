@@ -19,7 +19,8 @@
 
 #include "VNCTypes.h"
 
-extern unsigned char bytesPerCPixel;
+extern unsigned char bytesPerColor;
+extern VNCPixelFormat fbPixFormat;
 
 class VNCPalette {
     public:
@@ -28,13 +29,30 @@ class VNCPalette {
         static OSErr setup();
         static OSErr destroy();
 
-        static void setColor(unsigned int i, int red, int green, int blue);
-        static VNCColor *getPalette();
+        static Size minBufferSize();
 
-        static void preparePaletteRoutines();
-        static unsigned char *emitTrueColorPixel(unsigned char *dst, unsigned char color);
-        static unsigned char *emitTrueColorCPIXEL(unsigned char *dst, unsigned char color);
+        static Boolean hasChangesPending();
+        static Boolean hasWaitingColorMapUpdate();
+        static VNCColor *getWaitingColorMapUpdate(unsigned int *paletteSize);
 
-        #define emitColor(A,B)  {if (!fbPixFormat.trueColor) {*A++ = B;} else {A = VNCPalette::emitTrueColorPixel(A, B);}  }
-        #define emitCPIXEL(A,B) {if (!fbPixFormat.trueColor) {*A++ = B;} else {A = VNCPalette::emitTrueColorCPIXEL(A, B);} }
+        static OSErr fbSyncTasks();
+        static void idleTask();
+
+        static void beginNewSession(const VNCPixelFormat &format);
+        static void setPixelFormat(const VNCPixelFormat &format);
+
+        static void setIndexedColor(unsigned int i, int red, int green, int blue);
+
+        static void prepareColorRoutines(Boolean isCPIXEL);
+
+        static void checkColorTable();
+        static OSErr updateColorTable();
+
+        static void prepareTrueColorRoutines(Boolean isCPIXEL);
+        static unsigned char *emitTrueColor(unsigned char *dst, unsigned char color);
+
+        #define setupPIXEL()   {VNCPalette::prepareColorRoutines(false);}
+        #define setupCPIXEL()  {VNCPalette::prepareColorRoutines(true);}
+
+        #define emitColor(A,B)  {if (!fbPixFormat.trueColor) {*A++ = B;} else {A = VNCPalette::emitTrueColor(A, B);}  }
 };

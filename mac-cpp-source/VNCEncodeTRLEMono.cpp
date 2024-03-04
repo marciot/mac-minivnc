@@ -14,7 +14,6 @@
  *   To view a copy of the GNU General Public License, go to the following  *
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
-#include <string.h>
 
 #include "VNCServer.h"
 #include "VNCFrameBuffer.h"
@@ -163,16 +162,10 @@ uSolidWhiteTile:
     #undef rows
 }
 
-#if defined(VNC_FB_MONOCHROME)
-    #define GET_CHUNK VNCEncodeTRLE::getChunk
-#else
-    #define GET_CHUNK  getChunkMonochrome
-#endif
-
 #if USE_ENCODER == 0
     asm Boolean getChunkMonochrome(int x, int y, int w, int h, wdsEntry *wdsPtr);
 
-    asm Boolean GET_CHUNK(int x, int y, int w, int h, wdsEntry *wdsPtr) {
+    asm Boolean getChunkMonochrome(int x, int y, int w, int h, wdsEntry *wdsPtr) {
         #define xArg    8(a6)
         #define yArg   10(a6)
         #define wArg   12(a6)
@@ -203,7 +196,7 @@ uSolidWhiteTile:
             lsl.w   #6,tmp
             ext.l   tmp
         #else
-            #if !defined(VNC_FB_BITS_PER_PIX)
+            #if !defined(VNC_BYTES_PER_LINE)
                 mulu fbStride,tmp
             #else
                 mulu #VNC_BYTES_PER_LINE,tmp

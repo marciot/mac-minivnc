@@ -15,13 +15,11 @@
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
 
-#include <string.h>
-
 #include "VNCServer.h"
 #include "VNCFrameBuffer.h"
 #include "VNCScreenHash.h"
 
-#include "msgbuf.h"
+#include "DebugLog.h"
 
 #ifdef VNC_BYTES_PER_LINE
     #define COL_HASH_SIZE ((VNC_BYTES_PER_LINE + sizeof(unsigned long) - 1)/sizeof(unsigned long))
@@ -32,7 +30,6 @@
 #endif
 
 //#define TEST_HASH
-//#define HASH_COLUMNS_FIRST
 
 typedef pascal void (*VBLProcPtr)(VBLTaskPtr recPtr);
 
@@ -49,11 +46,7 @@ struct MonoHashData {
     unsigned long     *colHashNext;
 };
 
-#ifdef HASH_COLUMNS_FIRST
-    static int col = 0;
-#else
-    static int row = 0;
-#endif
+static int row = 0;
 
 static VNCRect dirtyRect;
 static HashCallbackPtr callback;
@@ -74,6 +67,7 @@ OSErr VNCScreenHash::setup() {
     data = (MonoHashData*) NewPtr(dataSize);
     if (MemError() != noErr)
         return MemError();
+    dprintf("Reserved %ld bytes for dirty rect detection\n", dataSize);
 
     Ptr hashPtr = ALIGN_LONG((Ptr)data + sizeof(MonoHashData));
 
@@ -185,16 +179,7 @@ OSErr VNCScreenHash::requestDirtyRect(int x, int y, int w, int h, HashCallbackPt
         evbl.vblTask.vblCount = 1;
 
         callback = func;
-        //dirtyRect.x = x;
-        //dirtyRect.y = y;
-        //dirtyRect.w = w;
-        //dirtyRect.h = h;
-
-        #ifdef HASH_COLUMNS_FIRST
-            col = 0;
-        #else
-            row = 0;
-        #endif
+        row = 0;
         beginCompute();
 
         return VInstall((QElemPtr)&evbl.vblTask);
@@ -218,14 +203,6 @@ pascal void VNCScreenHash::myVBLTask(VBLTaskPtr theVBL) {
             dprintf("Col: %s Row: %s ", colChk ? "ne" : "eq", rowChk ? "ne" : "eq");
             callback(0, 0, VNC_FB_WIDTH, VNC_FB_HEIGHT);
             callback = NULL;
-        }
-    #elif defined(HASH_COLUMNS_FIRST)
-        #ifdef VNC_BYTES_PER_LINE
-            const unsigned long fbStride = VNC_BYTES_PER_LINE;
-        #endif
-        if(col < (fbStride / 16)) {
-            computeHashesFastest(col++);
-            theVBL->vblCount = 1;
         }
     #else
         #ifdef VNC_FB_HEIGHT
@@ -261,11 +238,7 @@ pascal void VNCScreenHash::myVBLTask(VBLTaskPtr theVBL) {
                 dirtyRect.h = 0;
             } else {
                 // Not enough dirt, so keep waiting
-                #ifdef HASH_COLUMNS_FIRST
-                    col = 0;
-                #else
-                    row = 0;
-                #endif
+                row = 0;
                 beginCompute();
                 theVBL->vblCount = 16;
             }
@@ -284,15 +257,7 @@ void VNCScreenHash::beginCompute() {
     scrnColHashPtr = data->colHashNext;
 
     // Clear the next column buffer
-    #ifdef HASH_COLUMNS_FIRST
-        #ifdef VNC_FB_HEIGHT
-            memset(data->rowHashNext, 0, VNC_FB_HEIGHT * sizeof(unsigned long));
-        #else
-            memset(data->rowHashNext, 0, fbHeight * sizeof(unsigned long));
-        #endif
-    #else
-        memset(data->colHashNext, 0, COL_HASH_SIZE * sizeof(unsigned long));
-    #endif
+    ZERO_ANY (unsigned long, data->colHashNext, COL_HASH_SIZE);
 }
 
 void VNCScreenHash::computeDirty(int &x, int &y, int &w, int &h) {

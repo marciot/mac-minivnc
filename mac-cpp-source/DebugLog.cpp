@@ -1,5 +1,4 @@
-#include "msgbuf.h"
-#include "VNCConfig.h"
+#include "DebugLog.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -13,8 +12,6 @@
 
    Call dprintf() in your interrupt routine, then do_deferred_output in your event loop. */
 
-int ShowStatus(const char* format, ...);
-
 char buffer[CAPACITY];
 int wrpos = 0;
 int rdpos = 0;
@@ -22,7 +19,7 @@ int rdpos = 0;
 // Prints a debugging error message. If the message begins with "-" it will be shown
 // on the main VNC user interface.
 
-void dprintf(const char* format, ...) {
+void _dprintf(const char* format, ...) {
     char str[256];
 
     // Do the printf
@@ -42,7 +39,7 @@ void dprintf(const char* format, ...) {
     }
 }
 
-void do_deferred_output() {
+void _do_deferred_output() {
     char str[256];
     unsigned char len = 0;
     while (rdpos != wrpos) {
@@ -53,13 +50,7 @@ void do_deferred_output() {
         // Output the string
         str[len++] = c;
         if (c == '\0') {
-            if (str[0] == '-') {
-                printf( str+1 );
-                for(char *c;c = strchr(str,'\n');*c = '\r');
-                ShowStatus( str+1 );
-            } else {
-                printf(str);
-            }
+            fputs(str, stdout);
             len = 0;
         }
     }

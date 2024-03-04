@@ -15,9 +15,6 @@
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
 
-#include <stdio.h>
-#include <string.h>
-
 #include <Devices.h>
 
 #include "VNCServer.h"
@@ -29,7 +26,7 @@
 #include "VNCEncoder.h"
 #include "VNCEncodeCursor.h"
 #include "ChainedTCPHelper.h"
-#include "msgbuf.h"
+#include "DebugLog.h"
 
 #define VNC_DEBUG
 
@@ -59,6 +56,7 @@ pascal void tcpWaitForClientInit(TCPiopb *pb);
 pascal void tcpSendServerInit(TCPiopb *pb);
 pascal void vncPeekMessage(TCPiopb *pb);
 pascal void vncFinishMessage(TCPiopb *pb);
+pascal void vncNextMessage(TCPiopb *pb);
 pascal void vncSendColorMapEntries(TCPiopb *pb);
 
 void processMessageFragment(const char *src, size_t len);
@@ -70,7 +68,7 @@ void vncSetPixelFormat(const VNCSetPixFormat &);
 void vncEncoding(unsigned long, Boolean);
 void vncKeyEvent(const VNCKeyEvent &);
 void vncPointerEvent(const VNCPointerEvent &);
-void vncClientCutText(const VNCClientCutText &);
+void vncClientCutText(const VNCClientCutText &, const char *);
 void vncFBUpdateRequest(const VNCFBUpdateReq &);
 void vncSendFBUpdate(Boolean incremental);
 
@@ -80,7 +78,7 @@ pascal void vncSendFBUpdateColorMap();
 pascal void vncSendFBUpdateHeader(TCPiopb *pb);
 pascal void vncFBUpdateEncodeCursor(TCPiopb *pb);
 pascal void vncStartFBUpdate(TCPiopb *pb);
-pascal void vncSendFBUpdateRow(TCPiopb *pb);
+pascal void vncFBUpdateChunk(TCPiopb *pb);
 pascal void vncFinishFBUpdate(TCPiopb *pb);
 pascal void vncStatusAvailable(TCPiopb *pb);
 pascal void vncDeferredDataReady();
@@ -121,23 +119,18 @@ char              *vncServerVersion = "RFB 003.007\n";
 VNCClientMessages  vncClientMessage;
 VNCServerMessages  vncServerMessage;
 Point              vncLastMousePosition;
+const char        *vncCutTextPtr = 0;
+unsigned long      vncCutTextLen = 0;
 Boolean            runFBSyncedTasks = false;
-
 wdsEntry           myWDS[3];
 rdsEntry           myRDS[kNumRDS + 1];
 
 VNCRect            fbUpdateRect;
-unsigned long      fbUpdateStartTicks;
+#if LOG_COMPRESSION_STATS
+    unsigned long      fbUpdateStartTicks;
+#endif
 
-enum {
-    VNC_STOPPED,
-    VNC_STARTING,
-    VNC_WAITING,
-    VNC_CONNECTED,
-    VNC_RUNNING,
-    VNC_STOPPING,
-    VNC_ERROR
-} vncState = VNC_STOPPED;
+VNCState vncState = VNC_STOPPED;
 
 VNCFlags vncFlags = {
     false, // fbColorMapNeedsUpdate
@@ -149,6 +142,7 @@ VNCFlags vncFlags = {
     false, // clientTakesZRLE
     false, // clientTakesCursor
     false, // forceVNCAuth
+    false // zLibLoaded
 };
 
 #if USE_NOTIFY_PROC
@@ -196,11 +190,12 @@ OSErr vncServerStart() {
     epb_recv.ourA5 = SetCurrentA5();
     epb_recv.pb.ioCompletion = PreCompletion;
 
-    dprintf("Creating network stream\n");
     recvBuffer = NewPtr(kBufSize);
     vncError = MemError();
     if(vncError != noErr) return vncError;
+    dprintf("Reserved %d bytes for receive buffer\n", kBufSize);
 
+    dprintf("Creating network stream\n");
     tcp.then(&epb_recv.pb, tcpStreamCreated);
     tcp.createStream(&epb_recv.pb, recvBuffer, kBufSize, kNotifyProc);
 
@@ -281,8 +276,7 @@ pascal void tcpStreamCreated(TCPiopb *pb) {
         // wait for a connection
         vncState = VNC_WAITING;
         stream = tcp.getStream(pb);
-        dprintf("-Waiting for connection");
-        dprintf(" on port %d [ResEdit]\n", vncConfig.tcpPort);
+        dprintf("Waiting for connection on port %d [ResEdit]\n", vncConfig.tcpPort);
         tcp.then(pb, tcpSendProtocolVersion);
         tcp.waitForConnection(pb, stream, kTimeOut, vncConfig.tcpPort);
     }
@@ -305,7 +299,7 @@ pascal void tcpSendProtocolVersion(TCPiopb *pb) {
             dprintf("Server VNC Version: %11s\n", vncServerVersion);
         #endif
 
-        memcpy(vncServerMessage.protocol.version, vncServerVersion, 12);
+        BlockMove(vncServerVersion, vncServerMessage.protocol.version, 12);
         myWDS[0].ptr = (Ptr) &vncServerMessage;
         myWDS[0].length = 12;
         myWDS[1].ptr = 0;
@@ -379,7 +373,7 @@ pascal void tcpSendAuthChallenge(TCPiopb *pb) {
                 #ifdef VNC_DEBUG
                     dprintf("Sending authentication challenge\n");
                 #endif
-                memcpy(vncServerMessage.authChallenge.challenge,"PASSWORDPASSWORD", 16);
+                BlockMove("PASSWORDPASSWORD", vncServerMessage.authChallenge.challenge, 16);
                 myWDS[0].ptr = (Ptr) &vncServerMessage;
                 myWDS[0].length = sizeof(VNCServerAuthChallenge);
                 tcp.then(pb, tcpGetAuthChallengeResponse);
@@ -447,7 +441,6 @@ pascal void tcpSendServerInit(TCPiopb *pb) {
             dprintf("Client Init: %d\n", vncClientMessage.message);
         #endif
 
-        dprintf("-Connection established!\n");
         #ifdef VNC_FB_WIDTH
             vncServerMessage.init.fbWidth = VNC_FB_WIDTH;
             vncServerMessage.init.fbHeight = VNC_FB_HEIGHT;
@@ -484,10 +477,7 @@ pascal void tcpSendServerInit(TCPiopb *pb) {
             vncServerMessage.init.format.blueShift = 0;
         #endif
 
-        pendingPixFormat.bitsPerPixel = 0;
-        memcpy(&fbPixFormat, &vncServerMessage.init.format, sizeof(VNCPixelFormat));
-        bytesPerCPixel = fbPixFormat.bitsPerPixel / 8;
-        vncFlags.fbColorMapNeedsUpdate = true;
+        VNCPalette::beginNewSession(vncServerMessage.init.format);
         vncFlags.fbUpdateInProgress = false;
         vncFlags.fbUpdatePending = false;
 
@@ -499,9 +489,9 @@ pascal void tcpSendServerInit(TCPiopb *pb) {
         VNCEncoder::clear();
         VNCEncodeCursor::clear();
 
-        dprintf("Session name: %s [ResEdit]\n", vncConfig.sessionName);
-        vncServerMessage.init.nameLength = min(sizeof(vncServerMessage.init.name), strlen(vncConfig.sessionName));
-        strncpy(vncServerMessage.init.name, vncConfig.sessionName, vncServerMessage.init.nameLength);
+        dprintf("Session name: %#s [ResEdit]\n", vncConfig.sessionName);
+        vncServerMessage.init.nameLength = vncConfig.sessionName[0];
+        BlockMove(vncConfig.sessionName + 1, vncServerMessage.init.name, vncServerMessage.init.nameLength);
 
         myWDS[0].ptr = (Ptr) &vncServerMessage.init;
         myWDS[0].length = sizeof(vncServerMessage.init) - sizeof(vncServerMessage.init.name) + vncServerMessage.init.nameLength;
@@ -613,8 +603,19 @@ void processMessageFragment(const char *src, size_t len) {
                 case mFBUpdateRequest: vncFBUpdateRequest( vncClientMessage.fbUpdateReq); break;
                 case mKeyEvent:        vncKeyEvent(        vncClientMessage.keyEvent); break;
                 case mPointerEvent:    vncPointerEvent(    vncClientMessage.pointerEvent); break;
-                case mClientCutText:   vncClientCutText(   vncClientMessage.cutText); break;
                 // Variable sized messages
+                case mClientCutText:
+                    vncClientCutText(vncClientMessage.cutText, src);
+                    if (len >=  vncClientMessage.cutText.length) {
+                        // Skip over the cut text
+                        src += vncClientMessage.cutText.length;
+                        len -= vncClientMessage.cutText.length;
+                    } else {
+                        // TODO: Handle fragmented messages
+                        dprintf("Cannot deal with fragmented client cut text.\n");
+                        vncState = VNC_ERROR;
+                    }
+                    break;
                 case mSetEncodings:
                     processSetEncodingsFragment(bytesRead, dst);
                     continue;
@@ -668,7 +669,24 @@ pascal void vncFinishMessage(TCPiopb *pb) {
             processMessageFragment(myRDS[i].ptr, myRDS[i].length);
         }
 
-        // read subsequent messages
+        // If we have client cut text, stop processing
+        // messages so vncServerIdleTask will handle it,
+        // otherwise read subsequent messages
+        if (vncCutTextLen == 0) {
+            tcp.then(pb, vncPeekMessage);
+            tcp.receiveReturnBuffers(pb);
+        }
+    }
+}
+
+void vncServerIdleTask() {
+    if (vncCutTextLen) {
+        ZeroScrap();
+        PutScrap(vncCutTextLen, 'TEXT', (Ptr) vncCutTextPtr);
+        vncCutTextLen = 0;
+        vncCutTextPtr = 0;
+        // Resume processing messages
+        TCPiopb *pb = &epb_recv.pb;
         tcp.then(pb, vncPeekMessage);
         tcp.receiveReturnBuffers(pb);
     }
@@ -685,7 +703,7 @@ void vncSetPixelFormat(const VNCSetPixFormat &pixFormat) {
             format.redMax, format.greenMax, format.blueMax,
             format.redShift, format.greenShift, format.blueShift
         );
-        memcpy(&pendingPixFormat, &pixFormat.format, sizeof(VNCPixelFormat));
+        VNCPalette::setPixelFormat(format);
     } else if (format.depth != fbDepth) {
         dprintf("Client requested an incompatible color depth of %d\n", format.depth);
         vncState = VNC_ERROR;
@@ -749,7 +767,10 @@ void vncPointerEvent(const VNCPointerEvent &pointerEvent) {
     }
 }
 
-void vncClientCutText(const VNCClientCutText &) {
+void vncClientCutText(const VNCClientCutText &cutText, const char *text) {
+    dprintf("Got client text: %.*s\n", (unsigned short) cutText.length, text);
+    vncCutTextPtr = text;
+    vncCutTextLen = cutText.length;
 }
 
 void vncFBUpdateRequest(const VNCFBUpdateReq &fbUpdateReq) {
@@ -765,7 +786,7 @@ void vncFBUpdateRequest(const VNCFBUpdateReq &fbUpdateReq) {
 
 // Callback for the VBL task
 pascal void vncGotDirtyRect(int x, int y, int w, int h) {
-    if(vncFlags.fbUpdateInProgress) {
+    if (vncFlags.fbUpdateInProgress) {
         dprintf("Got dirty rect while busy\n");
         return;
     }
@@ -781,7 +802,7 @@ pascal void vncGotDirtyRect(int x, int y, int w, int h) {
 }
 
 void vncSendFBUpdate(Boolean incremental) {
-    if(incremental && !(vncFlags.fbColorMapNeedsUpdate || pendingPixFormat.bitsPerPixel)) {
+    if (incremental && !VNCPalette::hasChangesPending()) {
         // Ask the VBL task to determine what needs to be updated
         //dprintf("Requesting dirty rect\n");
         OSErr err = VNCScreenHash::requestDirtyRect(
@@ -801,7 +822,9 @@ void vncSendFBUpdate(Boolean incremental) {
 }
 
 pascal void vncPrepareForFBUpdate() {
-    fbUpdateStartTicks = TickCount();
+    #if LOG_COMPRESSION_STATS
+        fbUpdateStartTicks = TickCount();
+    #endif
     vncFlags.fbUpdateInProgress = true;
     vncFlags.fbUpdatePending = false;
 
@@ -822,17 +845,17 @@ pascal void vncPrepareForFBUpdate() {
 
     // If a new color palette is available, let the main
     // thread handle it before continuing with the update.
-    Boolean needDefer = vncFlags.fbColorMapNeedsUpdate || pendingPixFormat.bitsPerPixel;
+    const Boolean needDefer = VNCPalette::hasChangesPending();
 
     switch (VNCEncoder::begin()) {
-        case EncoderOk:
+        case EncoderReady:
             if (!needDefer) {
                 vncSendFBUpdateColorMap();
                 break;
             }
             // Intentional fall-thru
         case EncoderDefer:
-            runFBSyncedTasks = 1;
+            runFBSyncedTasks = true;
             // The idle task will complete initialization tasks and then
             // call vncDeferredDataReady() to resume sending the frame
             break;
@@ -853,35 +876,33 @@ pascal void vncSendFBUpdateColorMap() {
     vncFlags.fbUpdateInProgress = true;
     vncFlags.fbUpdatePending = false;
 
-    if(fbPixFormat.trueColor || !vncFlags.fbColorMapNeedsUpdate) {
-        vncFlags.fbColorMapNeedsUpdate = false;
+    if (VNCPalette::hasWaitingColorMapUpdate()) {
+        #ifdef VNC_DEBUG
+            dprintf("Sending color palette\n");
+        #endif
+
+        // Do we have a palette update that needs to be sent to the client?
+        unsigned int nColors;
+        const VNCColor *palette = VNCPalette::getWaitingColorMapUpdate(&nColors);
+
+        // Send the header
+        vncServerMessage.fbColorMap.message = mSetCMapEntries;
+        vncServerMessage.fbColorMap.padding = 0;
+        vncServerMessage.fbColorMap.firstColor = 0;
+        vncServerMessage.fbColorMap.numColors = nColors;
+
+        myWDS[0].ptr = (Ptr) &vncServerMessage;
+        myWDS[0].length = sizeof(VNCSetColorMapHeader);
+        myWDS[1].ptr = (Ptr) palette;
+        myWDS[1].length = nColors * sizeof(VNCColor);
+        myWDS[2].ptr = 0;
+        myWDS[2].length = 0;
+        tcp.then(pb, vncSendFBUpdateHeader);
+        tcp.send(pb, stream, myWDS, kTimeOut,true);
+    } else {
         tcp.clearError(pb);
         vncSendFBUpdateHeader(pb);
-        return;
     }
-
-    #ifdef VNC_DEBUG
-        dprintf("Sending color palette\n");
-    #endif
-    // Send the header
-    #ifdef VNC_FB_BITS_PER_PIX
-        const unsigned char fbDepth = VNC_FB_BITS_PER_PIX;
-    #endif
-    const unsigned int paletteSize = 1 << fbDepth;
-    vncServerMessage.fbColorMap.message = mSetCMapEntries;
-    vncServerMessage.fbColorMap.padding = 0;
-    vncServerMessage.fbColorMap.firstColor = 0;
-    vncServerMessage.fbColorMap.numColors = paletteSize;
-
-    myWDS[0].ptr = (Ptr) &vncServerMessage;
-    myWDS[0].length = sizeof(VNCSetColorMapHeader);
-    myWDS[1].ptr = (Ptr) VNCPalette::getPalette();
-    myWDS[1].length = paletteSize * sizeof(VNCColor);
-    myWDS[2].ptr = 0;
-    myWDS[2].length = 0;
-    tcp.then(pb, vncSendFBUpdateHeader);
-    tcp.send(pb, stream, myWDS, kTimeOut,true);
-    vncFlags.fbColorMapNeedsUpdate = false;
 }
 
 pascal void vncSendFBUpdateHeader(TCPiopb *pb) {
@@ -897,10 +918,10 @@ pascal void vncSendFBUpdateHeader(TCPiopb *pb) {
         if(vncFlags.clientTakesCursor && VNCEncodeCursor::needsUpdate()) {
             // If we have a cursor update pending, we send two rects, a
             // pseudo-encoding for the cursor, followed by the screen update
-            vncServerMessage.fbUpdate.numRects = 2;
+            vncServerMessage.fbUpdate.numRects = VNCEncoder::numOfSubrects() + 1;
             tcp.then(pb, vncFBUpdateEncodeCursor);
         } else {
-            vncServerMessage.fbUpdate.numRects = 1;
+            vncServerMessage.fbUpdate.numRects = VNCEncoder::numOfSubrects();
             tcp.then(pb, vncStartFBUpdate);
         }
         tcp.send(pb, stream, myWDS, kTimeOut, false);
@@ -922,30 +943,31 @@ pascal void vncFBUpdateEncodeCursor(TCPiopb *pb) {
 }
 
 pascal void vncStartFBUpdate(TCPiopb *pb) {
-    if (tcpSuccess(pb)) {
-        vncServerMessage.fbUpdateRect.rect = fbUpdateRect;
-        vncServerMessage.fbUpdateRect.encodingType = VNCEncoder::getEncoding();
-
-        myWDS[0].ptr = (Ptr) &vncServerMessage;
-        myWDS[0].length = sizeof(VNCFBUpdateRect);
-        myWDS[1].ptr = 0;
-        myWDS[1].length = 0;
-
-        tcp.then(pb, vncSendFBUpdateRow);
-        tcp.send(pb, stream, myWDS, kTimeOut, false);
-    }
+    vncFBUpdateChunk(pb);
 }
 
-pascal void vncSendFBUpdateRow(TCPiopb *pb) {
+pascal void vncFBUpdateChunk(TCPiopb *pb) {
     if (tcpSuccess(pb)) {
-        // Add the termination
-        myWDS[1].ptr = 0;
-        myWDS[1].length = 0;
+        wdsEntry *chunkWDS = myWDS;
 
-        // Get a row from the encoder
-        const Boolean gotMore = VNCEncoder::getChunk(fbUpdateRect.x, fbUpdateRect.y, fbUpdateRect.w, fbUpdateRect.h, myWDS);
+        // If we are starting a new subrect, emit the subrect header
+        if (VNCEncoder::isNewSubrect()) {
+            VNCEncoder::getSubrect(&vncServerMessage.fbUpdateRect.rect);
+            vncServerMessage.fbUpdateRect.encodingType = VNCEncoder::getEncoding();
+
+            chunkWDS->ptr = (Ptr) &vncServerMessage;
+            chunkWDS->length = sizeof(VNCFBUpdateRect);
+            chunkWDS++;
+        }
+
+        // Add the termination
+        chunkWDS[1].ptr = 0;
+        chunkWDS[1].length = 0;
+
+        // Get a chunk of data from the encoder
+        const Boolean gotMore = VNCEncoder::getChunk(chunkWDS);
         if(gotMore) {
-            tcp.then(pb, vncSendFBUpdateRow);
+            tcp.then(pb, vncFBUpdateChunk);
         } else {
             fbUpdateRect.w = fbUpdateRect.h = 0;
             tcp.then(pb, vncFinishFBUpdate);
@@ -955,8 +977,8 @@ pascal void vncSendFBUpdateRow(TCPiopb *pb) {
 }
 
 pascal void vncFinishFBUpdate(TCPiopb *pb) {
-    float elapsedTime = TickCount() - fbUpdateStartTicks;
     #if LOG_COMPRESSION_STATS
+        const float elapsedTime = TickCount() - fbUpdateStartTicks;
         dprintf("Update done in %.1f s\n", elapsedTime / 60);
     #endif
     vncFlags.fbUpdateInProgress = false;

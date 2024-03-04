@@ -23,11 +23,5 @@
 class VNCEncodeZRLE {
     public:
         static Size minBufferSize();
-
-        static int begin();
-        static void doIdle();
-        static Boolean getChunk(int x, int y, int w, int h, unsigned char *&ptr, unsigned long &length);
-
-        static long getEncoding() {return 6;}
 };
 

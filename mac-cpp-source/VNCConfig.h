@@ -17,10 +17,11 @@
 
 #pragma once
 
-#define USE_STDOUT
-#define LOG_COMPRESSION_STATS 0
+#define USE_STDOUT               1
+#define LOG_COMPRESSION_STATS    0
 
-#define USE_SANITY_CHECKS 0 // Add extra checks for debugging
+#define USE_SANITY_CHECKS        0 // Add extra checks for debugging
+#define USE_IN_PLACE_COMPRESSION 1
 
 /**
  * Specify a compression level for the color ZRLE/TRLE encoder,
@@ -36,7 +37,7 @@
  * for connections after a client disconnects, allowing
  * MiniVNC to be used in headless server mode.
  */
-#define VNC_HEADLESS_MODE
+//#define VNC_HEADLESS_MODE
 
 /**
  * To build for a specific resolution, uncomment one of
@@ -75,12 +76,15 @@ struct VNCConfig {
     unsigned short allowZRLE : 1;
     unsigned short autoRestart : 1;
     unsigned short forceVNCAuth : 1;
+    unsigned short enableLogging : 1;
     unsigned short : 0;
     unsigned char  zLibLevel;
     char           sessionName[11];
     unsigned short tcpPort;
     unsigned long  validation;
 };
+
+extern VNCConfig vncConfig;
 
 OSErr LoadPreferences();
 OSErr SavePreferences();
