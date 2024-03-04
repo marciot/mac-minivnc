@@ -142,7 +142,7 @@ VNCFlags vncFlags = {
     false, // clientTakesZRLE
     false, // clientTakesCursor
     false, // forceVNCAuth
-    false // zLibLoaded
+    false  // zLibLoaded
 };
 
 #if USE_NOTIFY_PROC
@@ -195,6 +195,7 @@ OSErr vncServerStart() {
     if(vncError != noErr) return vncError;
     dprintf("Reserved %d bytes for receive buffer\n", kBufSize);
 
+    vncState = VNC_STARTING;
     dprintf("Creating network stream\n");
     tcp.then(&epb_recv.pb, tcpStreamCreated);
     tcp.createStream(&epb_recv.pb, recvBuffer, kBufSize, kNotifyProc);
@@ -206,12 +207,18 @@ OSErr vncServerStart() {
 }
 
 OSErr vncServerStop() {
-    if (vncState != VNC_STOPPED) {
+    if ((vncState != VNC_STOPPED) && (vncState != VNC_STARTING)) {
         vncState = VNC_STOPPING;
         tcp.then(&epb_recv.pb, tcpStreamClosed);
         tcp.release(&epb_recv.pb, stream);
+        const unsigned long start = TickCount();
         while(vncState != VNC_STOPPED) {
             SystemTask();
+            if ((TickCount() - start) > 600) {
+                // Timeout after waiting 10 seconds for connection to
+                // gracefully end.
+                break;
+            }
         }
     }
 

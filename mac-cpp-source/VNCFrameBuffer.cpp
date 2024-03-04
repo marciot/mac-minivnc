@@ -115,12 +115,12 @@ Boolean VNCFrameBuffer::checkScreenResolution() {
 
     // Update the constants
     #ifndef VNC_FB_WIDTH
-        fbWidth = gdWidth;
+        fbWidth  = gdWidth;
         fbHeight = gdHeight;
+        fbStride = gdStride;
     #endif
     #ifndef VNC_FB_BITS_PER_PIX
         fbDepth = gdDepth;
-        fbStride = gdStride;
     #endif
 
     return isMatch;

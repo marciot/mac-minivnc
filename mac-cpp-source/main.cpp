@@ -219,6 +219,9 @@ void CheckServerState() {
     if (lastState != vncState) {
         lastState = vncState;
         switch (vncState) {
+            case VNC_STARTING:
+                ShowStatus("\pStarting network driver");
+                break;
             case VNC_WAITING:
                 ShowStatus("\pWaiting for connection");
                 break;

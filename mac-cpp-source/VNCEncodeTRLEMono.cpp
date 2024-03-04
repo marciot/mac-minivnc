@@ -163,8 +163,6 @@ uSolidWhiteTile:
 }
 
 #if USE_ENCODER == 0
-    asm Boolean getChunkMonochrome(int x, int y, int w, int h, wdsEntry *wdsPtr);
-
     asm Boolean getChunkMonochrome(int x, int y, int w, int h, wdsEntry *wdsPtr) {
         #define xArg    8(a6)
         #define yArg   10(a6)

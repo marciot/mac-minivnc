@@ -349,7 +349,9 @@ void VNCEncodeTRLE::begin() {
         // write the tile
 
         if (shortestLen > epb.bytesAvail) {
-            dprintf("Not enough space for tile in buffer. %ld < %ld\n", epb.bytesAvail, shortestLen);
+            #if SANITY_CHECK
+                dprintf("Not enough space for tile in buffer. %ld < %ld\n", epb.bytesAvail, shortestLen);
+            #endif
             return 0;
         }
 
