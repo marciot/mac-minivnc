@@ -21,16 +21,17 @@ Compatibility
 
 MiniVNC v0.9 used TRLE encoding (Tiled Run-Length Encoding) and paletted
 colors. While this encoding provides the best performance on B&W compact
-Macs, client support is very limited. MiniVNC v1.1 was overhauled to
-supports ZRLE and Hextile encodings for maximum client compatibility, but
-these encodings are limited to color-capable Macs.
+Macs, client support is very limited. After v1.1, MiniVNC was overhauled
+to supports ZRLE and Hextile encodings for maximum client compatibility,
+but these encodings are limited to color-capable Macs.
 
 Here are the server capabilities:
 
 | Server               | OS      | TRLE  | ZRLE    | Hextile | Notes                             |
 |----------------------|---------|-------|---------|---------|-----------------------------------|
-| [MiniVNC v1.2]       | macOS 7 | Yes   |  Yes    |  Yes    | Comptible with all tested clients |
-| [MiniVNC v0.9]       | macOS 7 | Yes   |  No     |  No     | Only works with RealVNC Viewer    | 
+| [MiniVNC v1.3]       | macOS 7 | Yes   |  Yes    |  Yes    | Comptible with all tested clients |
+| [MiniVNC v1.2]       | macOS 7 | Yes   |  Yes    |  Yes    | Crashes [TurboVNC]                |
+| [MiniVNC v0.9]       | macOS 7 | Yes   |  No     |  No     | Only works with [RealVNC Viewer]  | 
 
 Here are the client capabilities:
 
@@ -38,6 +39,8 @@ Here are the client capabilities:
 |----------------------|---------|-------|---------|---------|---------|--------------------------|
 | [RealVNC Viewer]     | Windows | Yes   |  Yes    |  Yes    |  Yes    | Only viewer for B&W Macs |
 | [TightVNC]           | Windows | No    |  Yes    |  Yes    |  No     | Requires MiniVNC 1.2+    |
+| [TurboVNC]           | Windows | No    |  Yes    |  Yes    |  No     | Requires MiniVNC 1.3+    |
+| [TigerVNC]           | Windows | No    |  Yes    |  Yes    |  No     | Tested w/ MiniVNC 1.3+   |                         |
 | [MacVNC]             | macOS 7 | No    |  No     |  Yes    |  No     | Requires MiniVNC 1.2+    |
 | [VNCThing 2.2]       | macOS 8 | No    |  No     |  Yes    |  No     | Requires MiniVNC 1.2+    |
 | Screen Sharing       | macOS X | No    |  Yes    |  No     |  No     | Requires MiniVNC 1.2+    |
@@ -50,10 +53,13 @@ Ethernet port.
 
 [RealVNC Viewer]:https://www.realvnc.com/en/connect/download/viewer/
 [TightVNC]:https://www.tightvnc.com/
+[TurboVNC]:https://www.turbovnc.org/
+[TigerVNC]:https://www.tigervnc.org/
 [VNCThing 2.2]:https://web.archive.org/web/20010813214257/http://www.webthing.net/vncthing
 [MacVNC]:https://macintoshgarden.org/apps/vnc-viewer-fat
 [MiniVNC v0.9]:https://github.com/marciot/mac-minivnc/releases/tag/v0.9-beta-march-19
 [MiniVNC v1.2]:https://github.com/marciot/mac-minivnc/releases/tag/v1.2-beta-jan-10-2024
+[MiniVNC v1.3]:https://github.com/marciot/mac-minivnc/releases/tag/v1.3-beta-mar-3-2024
 
 Sponsorship Perks
 -----------------
