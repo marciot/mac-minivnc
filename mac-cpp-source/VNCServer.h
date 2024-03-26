@@ -15,6 +15,10 @@
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
 
+#pragma once
+
+#include "ChainedTCPHelper.h"
+
 #include "VNCConfig.h"
 #include "VNCTypes.h"
 
@@ -38,23 +42,37 @@ struct VNCFlags {
     unsigned short clientTakesZRLE : 1;
     unsigned short clientTakesCursor : 1;
     unsigned short forceVNCAuth : 1;
+    unsigned short useTightAuth : 1;
     unsigned short zLibLoaded : 1;
 };
 
-extern VNCState       vncState;
-extern VNCConfig      vncConfig;
-extern VNCFlags       vncFlags;
-extern Point          vncLastMousePosition;
+Boolean _tcpSuccess(TCPiopb *pb, unsigned int line);
+#define tcpSuccess(A) _tcpSuccess(A,__LINE__)
 
-extern VNCRect        fbUpdateRect;
+extern ExtendedTCPiopb    epb_send, epb_recv;
+extern ChainedTCPHelper   tcp;
+extern wdsEntry           myWDS[];
+extern rdsEntry           myRDS[];
+extern StreamPtr          stream;
+extern VNCClientMessages  vncClientMessage;
 
-extern Boolean        runFBSyncedTasks;
-extern pascal void    vncFBSyncTasksDone();
+extern VNCState           vncState;
+extern VNCConfig          vncConfig;
+extern VNCFlags           vncFlags;
+extern Point              vncLastMousePosition;
+
+extern VNCRect            fbUpdateRect;
+
+extern Boolean            runFBSyncedTasks;
+extern pascal void        vncFBSyncTasksDone();
+
+pascal void tcpSendAuthResult(TCPiopb *pb);
+pascal void tcpSendAuthChallenge(TCPiopb *pb);
 
 OSErr vncServerStart();
 OSErr vncServerStop();
 OSErr vncServerError();
-void vncServerIdleTask();
+OSErr vncServerIdleTask();
 Boolean vncServerStopped();
 Boolean vncServerActive();
 

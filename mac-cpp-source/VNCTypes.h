@@ -17,10 +17,13 @@
 
 #pragma once
 
+#include "TightVNCTypes.h"
+
 enum {
     mConnectionFailed  = 0,
     mNoAuthentication  = 1,
-    mVNCAuthentication = 2
+    mVNCAuthentication = 2,
+    mTightAuth         = 16
 };
 
 enum {
@@ -45,13 +48,51 @@ enum {
     mServerCutText    = 3
 };
 
+/*
+ * References:
+ *    https://www.iana.org/assignments/rfb/rfb.xhtml
+ *    https://en.wikipedia.org/wiki/RFB_protocol
+ *    https://vncdotool.readthedocs.io/en/0.8.0/rfbproto.html#encodings
+ *    https://github.com/rfbproto/rfbproto/blob/master/rfbproto.rst
+ */
 enum {
     mRawEncoding      = 0,
+    mCopyRectEncoding = 1,
+    mRREEncoding      = 2,
+    mCoRREEncoding    = 4,
     mHextileEncoding  = 5,
     mZLibEncoding     = 6,
+    mTightEncoding    = 7,
+    mZHextileEncoding = 8,
+    mUltraEncoding    = 9,
     mTRLEEncoding     = 15,
     mZRLEEncoding     = 16,
-    mCursorEncoding   = -239
+    mH264Encoding     = 50,
+    mVMWareMinEnc     = 0x574d5600,
+    mVMWareMaxEnc     = 0x574d56ff,
+    mTightQtyMaxEnc   = -23,
+    mTightQtyMinEnc   = -32,
+    mTightPNGEncoding = -140,
+    mNewFBSizEncoding = -223,
+    mLastRectEncoding = -224,
+    mMousePosEncoding = -232,
+    mCursorEncoding   = -239,
+    mXCursorEncoding  = -240,
+    mTightCmpMaxEnc   = -247,
+    mTightCmpMinEnc   = -256,
+    mQMUPtrChangeEnc  = -257,
+    mQMUExtKeyEnc     = -258,
+    mQMUAudioEnc      = -259,
+    mGIIEncoding      = -305,
+    mDeskNameEncoding = -307,
+    mExtDesktopSizEnc = -308,
+    mFenceEncoding    = -312,
+    mContUpdtEncoding = -313,
+    mCrsrWithAlphaEnc = -314,
+    mJPEGQtyMaxEnc    = -412,
+    mJPEGQtyMinEnc    = -512,
+    mJPEGSubMaxEnc    = -763,
+    mJPEGSubMinEnc    = -768
 };
 
 struct VNCRect {
@@ -115,12 +156,6 @@ struct VNCSetEncoding {
     unsigned char message;
     unsigned char padding;
     unsigned short numberOfEncodings;
-};
-
-struct VNCSetEncodingOne {
-    unsigned char message;
-    unsigned char padding;
-    unsigned short numberOfEncodings;
     unsigned long encoding;
 };
 
@@ -175,14 +210,18 @@ struct VNCClientCutText {
 };
 
 union VNCClientMessages {
-    char               message;
-    VNCSetPixFormat    pixFormat;
-    VNCSetEncoding     setEncoding;
-    VNCSetEncodingOne  setEncodingOne;
-    VNCFBUpdateReq     fbUpdateReq;
-    VNCKeyEvent        keyEvent;
-    VNCPointerEvent    pointerEvent;
-    VNCClientCutText   cutText;
+    char                    message;
+    VNCSetPixFormat         pixFormat;
+    VNCSetEncoding          setEncoding;
+    VNCFBUpdateReq          fbUpdateReq;
+    VNCKeyEvent             keyEvent;
+    VNCPointerEvent         pointerEvent;
+    VNCClientCutText        cutText;
+
+    // TightVNC Messages
+    long                    tightVncExtMsg;
+    TightVNCCapReply        tightCapReq;
+    TightVNCFileUploadData  tightFileUploadData;
 };
 
 union VNCServerMessages {

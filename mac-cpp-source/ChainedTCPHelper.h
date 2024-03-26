@@ -15,6 +15,8 @@
  *   location: <http://www.gnu.org/licenses/>.                              *
  ****************************************************************************/
 
+#pragma once
+
 #include "MacTCP.h"
 
 const long kTimeOut = 120;      /* Timeout for TCP commands */

@@ -30,7 +30,13 @@
 #include "DebugLog.h"
 #include "DialogUtils.h"
 
+#include "stdlib.h"
+
 #define DEBUG_SEGMENT_LOAD 0
+
+#if USE_CODE_PROFILER
+    #include "profiler.h"
+#endif
 
 enum {
     mApple         = 32000,
@@ -107,6 +113,13 @@ main() {
     InitDialogs(nil);
     InitCursor();
 
+    #if USE_CODE_PROFILER
+        if (ProfilerInit(collectDetailed, bestTimeBase, 9000, 15)) {
+            ShowAlert('ERR', 128, "Profiler failed to start.");
+            ExitToShell();
+        }
+    #endif
+
     /* Make sure we are running in a compatible resolution */
     if (!VNCFrameBuffer::checkScreenResolution()) {
         ExitToShell();
@@ -155,7 +168,9 @@ main() {
     /* Run the event loop */
     while (!gCancel || !vncServerStopped()) {
         EventRecord event;
+        #pragma profile off
         EventGet(everyEvent, &event, 10, NULL);
+        #pragma profile reset
         #if USE_STDOUT
             if (vncConfig.enableLogging) {
                 if (!SIOUXHandleOneEvent(&event)) {
@@ -178,7 +193,7 @@ main() {
             checkLoadedSegments();
         #endif
         // Run tasks that need to happen right before a frame buffer update
-        if(runFBSyncedTasks) {
+        if (runFBSyncedTasks) {
             runFBSyncedTasks = false;
             dprintf("\n==== Starting FBSyncTasks ====\n");
             Boolean success = (VNCEncoder::fbSyncTasks() == noErr) &&
@@ -207,6 +222,11 @@ main() {
     }
 
     SavePreferences();
+
+    #if USE_CODE_PROFILER
+        ProfilerDump("\pMiniVNC.prof");
+        ProfilerTerm();
+    #endif
 
     #ifndef VNC_HEADLESS_MODE
         Alert(129, NULL); // Sponsorship dialog box

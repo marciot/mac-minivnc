@@ -16,6 +16,9 @@
  ****************************************************************************/
 
 #include <Devices.h>
+#include <Files.h>
+
+#include "GestaltUtils.h"
 
 #include "VNCServer.h"
 #include "VNCKeyboard.h"
@@ -25,22 +28,23 @@
 #include "VNCScreenHash.h"
 #include "VNCEncoder.h"
 #include "VNCEncodeCursor.h"
+#include "VNCStreamReader.h"
 #include "ChainedTCPHelper.h"
 #include "DebugLog.h"
+
+#if USE_TIGHT_AUTH
+    #include "TightVNCSupport.h"
+#endif
 
 #define VNC_DEBUG
 
 #define POLL_CONNECTION_STATUS 0 // Experimental
 #define USE_NOTIFY_PROC        0 // Experimental
 
-#define kNumRDS      5       /* Larger numbers increase read performance */
 #define kBufSize     16384   /* Size for TCP stream buffer and receive buffer */
 #define kReadTimeout 10
 
 static asm void PreCompletion(TCPiopb *pb);
-
-Boolean _tcpSuccess(TCPiopb *pb, unsigned int line);
-#define tcpSuccess(A) _tcpSuccess(A,__LINE__)
 
 pascal void tcpStreamCreated(TCPiopb *pb);
 pascal void tcpStreamClosed(TCPiopb *pb);
@@ -49,20 +53,16 @@ pascal void tcpReceiveClientProtocolVersion(TCPiopb *pb);
 pascal void tcpGetClientProtocolVersion(TCPiopb *pb);
 pascal void tcpSendAuthTypes(TCPiopb *pb);
 pascal void tcpGetAuthType(TCPiopb *pb);
+pascal void tcpProcessAuthType(TCPiopb *pb);
 pascal void tcpSendAuthChallenge(TCPiopb *pb);
 pascal void tcpGetAuthChallengeResponse(TCPiopb *pb);
 pascal void tcpSendAuthResult(TCPiopb *pb);
 pascal void tcpWaitForClientInit(TCPiopb *pb);
 pascal void tcpSendServerInit(TCPiopb *pb);
-pascal void vncPeekMessage(TCPiopb *pb);
-pascal void vncFinishMessage(TCPiopb *pb);
-pascal void vncNextMessage(TCPiopb *pb);
+pascal void vncReadMessages(TCPiopb *pb);
+pascal void vncGotNewMessages(TCPiopb *pb);
+pascal void vncProcessMessages(TCPiopb *pb);
 pascal void vncSendColorMapEntries(TCPiopb *pb);
-
-void processMessageFragment(const char *src, size_t len);
-
-size_t getSetEncodingFragmentSize(size_t bytesRead);
-void processSetEncodingsFragment(size_t bytesRead, char *&dst);
 
 void vncSetPixelFormat(const VNCSetPixFormat &);
 void vncEncoding(unsigned long, Boolean);
@@ -119,8 +119,6 @@ char              *vncServerVersion = "RFB 003.007\n";
 VNCClientMessages  vncClientMessage;
 VNCServerMessages  vncServerMessage;
 Point              vncLastMousePosition;
-const char        *vncCutTextPtr = 0;
-unsigned long      vncCutTextLen = 0;
 Boolean            runFBSyncedTasks = false;
 wdsEntry           myWDS[3];
 rdsEntry           myRDS[kNumRDS + 1];
@@ -142,6 +140,7 @@ VNCFlags vncFlags = {
     false, // clientTakesZRLE
     false, // clientTakesCursor
     false, // forceVNCAuth
+    false, // useTightAuth
     false  // zLibLoaded
 };
 
@@ -202,6 +201,10 @@ OSErr vncServerStart() {
 
     // Set the forceVNCAuth to the default
     vncFlags.forceVNCAuth = vncConfig.forceVNCAuth;
+
+    #if USE_TIGHT_AUTH
+        loadTightSupport();
+    #endif
 
     return noErr;
 }
@@ -331,20 +334,27 @@ pascal void tcpSendAuthTypes(TCPiopb *pb) {
             dprintf("Client VNC Version: %11s\n", vncServerMessage.protocol.version);
         #endif
 
+        vncFlags.useTightAuth = false;
         const unsigned char serverDefaultAuthType = vncFlags.forceVNCAuth ? mVNCAuthentication : mNoAuthentication;
 
         if(vncServerMessage.protocol.version[10] == '7' || vncServerMessage.protocol.version[10] == '8') {
             // RFB 3.7: Send a list of authetication types to the client and let the client decide
             vncServerMessage.authTypeList.numberOfAuthTypes = 1;
             vncServerMessage.authTypeList.authTypes[0] = serverDefaultAuthType;
+            #if USE_TIGHT_AUTH
+                vncServerMessage.authTypeList.numberOfAuthTypes = 2;
+                vncServerMessage.authTypeList.authTypes[1] = mTightAuth;
+            #endif
 
             #ifdef VNC_DEBUG
                 dprintf("Supported authentication types count: %d\n", vncServerMessage.authTypeList.numberOfAuthTypes);
-                dprintf("  Authentication type: %d\n", vncServerMessage.authTypeList.authTypes[0]);
+                for (int i = 0; i < vncServerMessage.authTypeList.numberOfAuthTypes; i++) {
+                    dprintf("  Authentication type: %d\n", vncServerMessage.authTypeList.authTypes[i]);
+                }
             #endif
 
             myWDS[0].ptr = (Ptr) &vncServerMessage;
-            myWDS[0].length = sizeof(VNCServerAuthTypeList);
+            myWDS[0].length = 1 + vncServerMessage.authTypeList.numberOfAuthTypes;
             tcp.then(pb, tcpGetAuthType);
         } else {
             // RFB 3.3: Server decides the authentication type
@@ -361,30 +371,35 @@ pascal void tcpSendAuthTypes(TCPiopb *pb) {
 
 pascal void tcpGetAuthType(TCPiopb *pb) {
     if (tcpSuccess(pb)) {
-        tcp.then(pb, tcpSendAuthChallenge);
+        tcp.then(pb, tcpProcessAuthType);
         tcp.receive(pb, stream, (Ptr) &vncClientMessage, sizeof(unsigned char));
     }
 }
 
-pascal void tcpSendAuthChallenge(TCPiopb *pb) {
+pascal void tcpProcessAuthType(TCPiopb *pb) {
     if (tcpSuccess(pb)) {
         #ifdef VNC_DEBUG
-            dprintf("Selected authentication type: %s [ResEdit]\n", vncClientMessage.message == mVNCAuthentication ? "vncAuth" : "noAuth");
+            char *authName;
+            switch(vncClientMessage.message) {
+                case mVNCAuthentication: authName = "vncAuth"; break;
+                case mTightAuth:         authName = "tightAuth"; break;
+                case mNoAuthentication:  authName = "noAuth"; break;
+                default:                 authName = "unknown";
+            }
+            dprintf("Selected authentication type: %s\n", authName);
         #endif
 
         switch(vncClientMessage.message) {
+            #if USE_TIGHT_AUTH
+                case mTightAuth:
+                    tcpSendTightVNCAuthTypes(pb);
+                    break;
+            #endif
             case mNoAuthentication:
                 tcpWaitForClientInit(pb);
                 break;
             case mVNCAuthentication:
-                #ifdef VNC_DEBUG
-                    dprintf("Sending authentication challenge\n");
-                #endif
-                BlockMove("PASSWORDPASSWORD", vncServerMessage.authChallenge.challenge, 16);
-                myWDS[0].ptr = (Ptr) &vncServerMessage;
-                myWDS[0].length = sizeof(VNCServerAuthChallenge);
-                tcp.then(pb, tcpGetAuthChallengeResponse);
-                tcp.send(pb, stream, myWDS, kTimeOut, true);
+                tcpSendAuthChallenge(pb);
                 break;
             default:
                  dprintf("Invalid authentication type!\n");
@@ -392,6 +407,17 @@ pascal void tcpSendAuthChallenge(TCPiopb *pb) {
                  break;
         }
     }
+}
+
+pascal void tcpSendAuthChallenge(TCPiopb *pb) {
+    #ifdef VNC_DEBUG
+        dprintf("Sending authentication challenge\n");
+    #endif
+    BlockMove("PASSWORDPASSWORD", vncServerMessage.authChallenge.challenge, 16);
+    myWDS[0].ptr = (Ptr) &vncServerMessage;
+    myWDS[0].length = sizeof(VNCServerAuthChallenge);
+    tcp.then(pb, tcpGetAuthChallengeResponse);
+    tcp.send(pb, stream, myWDS, kTimeOut, true);
 }
 
 pascal void tcpGetAuthChallengeResponse(TCPiopb *pb) {
@@ -426,6 +452,7 @@ pascal void tcpSendAuthResult(TCPiopb *pb) {
 
 pascal void tcpWaitForClientInit(TCPiopb *pb) {
     if (tcpSuccess(pb)) {
+        dprintf("Waiting for client init\n");
         // get client init message
         tcp.then(pb, tcpSendServerInit);
         tcp.receive(pb, stream, (Ptr) &vncClientMessage, 1);
@@ -503,6 +530,10 @@ pascal void tcpSendServerInit(TCPiopb *pb) {
         myWDS[0].ptr = (Ptr) &vncServerMessage.init;
         myWDS[0].length = sizeof(vncServerMessage.init) - sizeof(vncServerMessage.init.name) + vncServerMessage.init.nameLength;
 
+        #if USE_TIGHT_AUTH
+            sendTightCapabilities();
+        #endif
+
         // Set the forceVNCAuth to the default
         vncFlags.forceVNCAuth = vncConfig.forceVNCAuth;
 
@@ -510,148 +541,185 @@ pascal void tcpSendServerInit(TCPiopb *pb) {
         BlockMove(&epb_recv, &epb_send, sizeof(ExtendedTCPiopb));
 
         vncState = VNC_RUNNING;
-        tcp.then(pb, vncPeekMessage);
+        dprintf("Begin polling for messages from client\n");
+        tcp.then(pb, vncReadMessages);
         tcp.send(pb, stream, myWDS, kTimeOut, true);
     }
 }
 
-void processMessageFragment(const char *src, size_t len) {
-    static char *dst = (char *)&vncClientMessage;
-
-    /**
-     * Process unfragmented mPointerEvent and mFBUpdateRequest messages,
-     * the common case
-     *
-     * Whole messages will be processed without copying. Upon exit, either
-     * len = 0 and all data has been consumed, or len != 0 and src will
-     * point to messages for further processing.
-     */
-
-    if (  (dst == (char *)&vncClientMessage) &&        // If there are no prior fragments...
-         ( ((unsigned long)src & 0x01) == 0) ) { // ... and word aligned for 68000
-        while(true) {
-            if((*src == mPointerEvent) && (len >= sizeof(VNCPointerEvent))) {
-                vncPointerEvent(*(VNCPointerEvent*)src);
-                src += sizeof(VNCPointerEvent);
-                len -= sizeof(VNCPointerEvent);
+DispatchMsgResult dispatchClientMessage(MessageData *pb);
+DispatchMsgResult dispatchClientMessage(MessageData *pb) {
+    switch (pb->msgPtr->message) {
+        case mPointerEvent:    DISPATCH_MESSAGE(vncPointerEvent,     pointerEvent);
+        case mFBUpdateRequest: DISPATCH_MESSAGE(vncFBUpdateRequest,   fbUpdateReq);
+        case mSetPixelFormat:  DISPATCH_MESSAGE(vncSetPixelFormat,      pixFormat);
+        case mKeyEvent:        DISPATCH_MESSAGE(vncKeyEvent,             keyEvent);
+        case mClientCutText:
+            MAIN_LOOP_ONLY();
+            DISPATCH_MSGWSTR(vncClientCutText, cutText, length);
+        case mSetEncodings:
+            MUST_COPY();
+            READ_ALL(setEncoding);
+            vncClientMessage.setEncoding.numberOfEncodings--;
+            const Boolean gotMore = vncClientMessage.setEncoding.numberOfEncodings > 0;
+            vncEncoding (vncClientMessage.setEncoding.encoding, gotMore);
+            if (gotMore) {
+                // Preare to read the next encoding
+                pb->msgAvail -= sizeof(vncClientMessage.setEncoding.encoding);
+                return msgTooShort;
             }
+            break;
+    #if USE_TIGHT_AUTH
+        case mTightVNCExt:
+            return dispatchTightClientMessage(pb);
+    #endif
+        default:
+            dprintf("Invalid message: %d\n", pb->msgPtr->message);
+            vncState = VNC_ERROR;
+            break;
+    }
+    return nextMessage;
+}
 
-            else if((*src == mFBUpdateRequest) && (len >= sizeof(VNCFBUpdateReq))) {
-                vncFBUpdateRequest(*(VNCFBUpdateReq*)src);
-                src += sizeof(VNCFBUpdateReq);
-                len -= sizeof(VNCFBUpdateReq);
-            }
+Boolean processMessageFragments (CallContext context);
+Boolean processMessageFragments (CallContext context) {
+    MessageData pb;
 
-            else
-                break; // Exit loop for any other message
+    static unsigned short resumeReadAt  = -1;
+    static unsigned short resumeWriteAt = -1;
+
+    if (context == asMainLoop) {
+        if (resumeReadAt != -1) {
+            inStream.setPosition(resumeReadAt);
+            resumeReadAt = -1;
+            dprintf("\n==== Starting deferred messages ====\n");
+        } else {
+            // Nothing to do
+            return true;
         }
     }
 
-    /**
-     * Deal with fragmented messages, a less common case
-     *
-     * While processing fragmented messages, src is a read pointer into the
-     * RDS while dst is a write pointer into vncClientMessage. Bytes are copied
-     * from src to dst until a full message detected, at which point it
-     * is processed and dst is reset to the top of vncClientMessage.
-     *
-     * Certain messages in the VNC protocol are variable size, so a message
-     * may be copied in bits until its total size is known.
-     */
+    unsigned short msgStart = 0;
 
-    size_t bytesRead, msgSize;
+    if (resumeWriteAt != -1) {
+        pb.msgAvail = resumeWriteAt;
+        resumeWriteAt = -1;
+        goto continueInterruptedMessage;
+    }
 
-    while(len) {
-        // If we've read no bytes yet, get the message type
-        if(dst == (char *)&vncClientMessage) {
-            vncClientMessage.message = *src++;
-            len--;
-            dst++;
-        }
+    for(;;) {
 
-        // How many bytes have been read up to this point?
-        bytesRead = dst - (char *)&vncClientMessage;
-
-        // Figure out the message length
-        switch(vncClientMessage.message) {
-            case mSetPixelFormat:  msgSize = sizeof(VNCSetPixFormat); break;
-            case mFBUpdateRequest: msgSize = sizeof(VNCFBUpdateReq); break;
-            case mKeyEvent:        msgSize = sizeof(VNCKeyEvent); break;
-            case mPointerEvent:    msgSize = sizeof(VNCPointerEvent); break;
-            case mClientCutText:   msgSize = sizeof(VNCClientCutText); break;
-            case mSetEncodings:    msgSize = getSetEncodingFragmentSize(bytesRead); break;
-            default:
-                dprintf("Invalid message: %d\n", vncClientMessage.message);
-                vncServerStop();
+        /**
+         * The usual case is that there are several complete unfragmented
+         * messages that we can process in-place. Process these until we
+         * encounter a fragmented or un-aligned message.
+         */
+        for(;;) {
+            pb.msgPtr = (const VNCClientMessages *) inStream.getAlignedBlock (&pb.msgAvail);
+            if (!pb.msgPtr) {
+                // Message must be un-aligned on a 68000, we can't process
+                // it in place.
                 break;
-        }
-
-        // Copy message bytes
-        if(bytesRead < msgSize) {
-            size_t bytesToCopy = msgSize - bytesRead;
-
-            // Copy the message bytes
-            if(bytesToCopy > len) bytesToCopy = len;
-
-            BlockMove(src, dst, bytesToCopy);
-            src += bytesToCopy;
-            len -= bytesToCopy;
-            dst += bytesToCopy;
-        }
-
-        // How many bytes have been read up to this point?
-        bytesRead = dst - (char *)&vncClientMessage;
-
-        if(bytesRead == msgSize) {
-            // Dispatch the message
-            switch(vncClientMessage.message) {
-                // Fixed sized messages
-                case mSetPixelFormat:  vncSetPixelFormat(  vncClientMessage.pixFormat); break;
-                case mFBUpdateRequest: vncFBUpdateRequest( vncClientMessage.fbUpdateReq); break;
-                case mKeyEvent:        vncKeyEvent(        vncClientMessage.keyEvent); break;
-                case mPointerEvent:    vncPointerEvent(    vncClientMessage.pointerEvent); break;
-                // Variable sized messages
-                case mClientCutText:
-                    vncClientCutText(vncClientMessage.cutText, src);
-                    if (len >=  vncClientMessage.cutText.length) {
-                        // Skip over the cut text
-                        src += vncClientMessage.cutText.length;
-                        len -= vncClientMessage.cutText.length;
-                    } else {
-                        // TODO: Handle fragmented messages
-                        dprintf("Cannot deal with fragmented client cut text.\n");
-                        vncState = VNC_ERROR;
-                    }
-                    break;
-                case mSetEncodings:
-                    processSetEncodingsFragment(bytesRead, dst);
-                    continue;
             }
-            // Prepare to receive next message
-            dst = (char *)&vncClientMessage;
+            pb.context = context;
+            DispatchMsgResult res = dispatchClientMessage(&pb);
+            if (res == msgTooShort) {
+                // We must have a message fragment...
+                    break;
+            }
+            if (res == badContext) {
+                // ...or a message which requires
+                // execution in the main loop
+                resumeReadAt = inStream.getPosition();
+                return true;
+            }
+            if (res == returnToCaller) {
+                return true;
+            }
+            inStream.skip(pb.msgSize);
+            if (inStream.finished()) {
+                return false;
+            }
         }
-    }
-}
 
-size_t getSetEncodingFragmentSize(size_t bytesRead) {
-    return ((bytesRead >= sizeof(VNCSetEncoding)) && vncClientMessage.setEncoding.numberOfEncodings) ?
-        sizeof(VNCSetEncodingOne) :
-        sizeof(VNCSetEncoding);
-}
+        /**
+         * Deal with fragmented messages, a less common case
+         *
+         * While processing fragmented messages, src is a read pointer into the
+         * RDS while dst is a write pointer into vncClientMessage. Bytes are copied
+         * from src to dst until a full message detected, at which point it
+         * is processed and dst is reset to the top of vncClientMessage.
+         *
+         * Certain messages in the VNC protocol are variable size, so a message
+         * may be copied in bits until its total size is known.
+         */
 
-void processSetEncodingsFragment(size_t bytesRead, char *&dst) {
-    if(bytesRead == sizeof(VNCSetEncodingOne)) {
-        vncEncoding(vncClientMessage.setEncodingOne.encoding, vncClientMessage.setEncodingOne.numberOfEncodings > 1);
-        vncClientMessage.setEncodingOne.numberOfEncodings--;
-    }
+        msgStart    = inStream.getPosition();
+        pb.msgAvail = inStream.copyTo(&vncClientMessage, 1);
+        if (inStream.finished()) {
+            resumeWriteAt = pb.msgAvail;
+            return false;
+        }
 
-    if(vncClientMessage.setEncoding.numberOfEncodings) {
-        // Preare to read the next encoding
-        dst = (char *) &vncClientMessage.setEncodingOne.encoding;
-    } else {
-        // Prepare to receive next message
-        dst = (char *) &vncClientMessage;
-    }
+    continueInterruptedMessage:
+
+        pb.msgPtr  = (const VNCClientMessages *)&vncClientMessage;
+        pb.context = context;
+
+        DispatchMsgResult res;
+        while ((res = dispatchClientMessage(&pb)) == msgTooShort) {
+            if (vncState != VNC_RUNNING) return true;
+
+            #if SANITY_CHECK
+                if (pb.msgSize == pb.msgAvail) {
+                    dprintf("dispatchClientMessage should return true, else we loop forever!\n");
+                    vncState = VNC_ERROR;
+                    return true;
+                }
+            #endif
+
+            if (pb.msgSize > sizeof(VNCClientMessages)) {
+                dprintf("Insufficient space to assemble fragmented message of length %ld\n", pb.msgSize);
+                vncState = VNC_ERROR;
+                return true;
+            }
+
+            // Copy message bytes
+            const size_t bytesToCopy = pb.msgSize - pb.msgAvail;
+            void *dst = (char *)&vncClientMessage + pb.msgAvail;
+            pb.msgAvail += inStream.copyTo(dst, bytesToCopy);
+            if (inStream.finished()) {
+                resumeWriteAt = pb.msgAvail;
+                return false;
+            }
+        } // !dispatchClientMessage
+
+        if (res == badContext) {
+            // Defer the execution until the main loop
+            resumeReadAt = msgStart;
+            return true;
+        }
+
+        if (res == returnToCaller) {
+            return true;
+        }
+
+        #if SANITY_CHECK
+            if (pb.msgSize < pb.msgAvail) {
+                dprintf("Message function consumed less than it requested!\n");
+                vncState = VNC_ERROR;
+                return true;
+            }
+        #endif
+
+        // Process the next message
+        const size_t bytesConsumed = pb.msgSize - pb.msgAvail;
+        inStream.skip(bytesConsumed);
+        pb.msgAvail = 0;
+        if (inStream.finished()) {
+            return false;
+        }
+    } // for(;;)
 }
 
 void vncEncoding(unsigned long encoding, Boolean hasMore) {
@@ -661,42 +729,52 @@ void vncEncoding(unsigned long encoding, Boolean hasMore) {
     VNCEncoder::clientEncoding(encoding, hasMore);
 }
 
-pascal void vncPeekMessage(TCPiopb *pb) {
+pascal void vncReadMessages(TCPiopb *pb) {
     if (tcpSuccess(pb) && vncState == VNC_RUNNING) {
         // read the first byte of a message
-        tcp.then(pb, vncFinishMessage);
+        tcp.then(pb, vncGotNewMessages);
         tcp.receiveNoCopy(pb, stream, myRDS, kNumRDS);
     }
 }
 
-pascal void vncFinishMessage(TCPiopb *pb) {
+pascal void vncGotNewMessages(TCPiopb *pb) {
     if (tcpSuccess(pb)) {
-        for(int i = 0; i < kNumRDS; i++) {
-            if(myRDS[i].length == 0) break;
-            processMessageFragment(myRDS[i].ptr, myRDS[i].length);
-        }
+        inStream.setPosition(0);
+        vncProcessMessages(pb);
+    }
+}
 
-        // If we have client cut text, stop processing
-        // messages so vncServerIdleTask will handle it,
-        // otherwise read subsequent messages
-        if (vncCutTextLen == 0) {
-            tcp.then(pb, vncPeekMessage);
+pascal void vncProcessMessages(TCPiopb *pb) {
+    if (tcpSuccess(pb)) {
+        if (!processMessageFragments (asInterrupt)) {
+            tcp.then(pb, vncReadMessages);
             tcp.receiveReturnBuffers(pb);
         }
     }
 }
 
-void vncServerIdleTask() {
-    if (vncCutTextLen) {
-        ZeroScrap();
-        PutScrap(vncCutTextLen, 'TEXT', (Ptr) vncCutTextPtr);
-        vncCutTextLen = 0;
-        vncCutTextPtr = 0;
+void returnFromTightVNCMessage() {
+    TCPiopb *pb = &epb_recv.pb;
+    if(inStream.finished()) {
+        tcp.then(pb, vncReadMessages);
+        tcp.receiveReturnBuffers(pb);
+    } else {
+        vncProcessMessages(pb);
+    }
+}
+
+OSErr vncServerIdleTask() {
+    if (vncFlags.fbUpdateInProgress) {
+        return noErr;
+    }
+    if (!processMessageFragments (asMainLoop)) {
         // Resume processing messages
         TCPiopb *pb = &epb_recv.pb;
-        tcp.then(pb, vncPeekMessage);
+        tcp.then(pb, vncReadMessages);
         tcp.receiveReturnBuffers(pb);
+        dprintf("==== Finishing deferred messages ====\n");
     }
+    return noErr;
 }
 
 void vncSetPixelFormat(const VNCSetPixFormat &pixFormat) {
@@ -704,12 +782,12 @@ void vncSetPixelFormat(const VNCSetPixFormat &pixFormat) {
     #ifdef VNC_FB_BITS_PER_PIX
         const unsigned char fbDepth = VNC_FB_BITS_PER_PIX;
     #endif
+    dprintf("Client requests TrueColor: %d; bitsPerPixel %d; depth %d; big-endian: %d, max %d/%d/%d; shift %d/%d/%d\n",
+        format.trueColor, format.bitsPerPixel, format.depth, format.bigEndian,
+        format.redMax, format.greenMax, format.blueMax,
+        format.redShift, format.greenShift, format.blueShift
+    );
     if (format.trueColor) {
-        dprintf("Client requests TrueColor; bitsPerPixel %d; depth %d; big-endian: %d, max %d/%d/%d; shift %d/%d/%d\n",
-            format.bitsPerPixel, format.depth, format.bigEndian,
-            format.redMax, format.greenMax, format.blueMax,
-            format.redShift, format.greenShift, format.blueShift
-        );
         VNCPalette::setPixelFormat(format);
     } else if (format.depth != fbDepth) {
         dprintf("Client requested an incompatible color depth of %d\n", format.depth);
@@ -776,8 +854,8 @@ void vncPointerEvent(const VNCPointerEvent &pointerEvent) {
 
 void vncClientCutText(const VNCClientCutText &cutText, const char *text) {
     dprintf("Got client text: %.*s\n", (unsigned short) cutText.length, text);
-    vncCutTextPtr = text;
-    vncCutTextLen = cutText.length;
+    ZeroScrap();
+    PutScrap (cutText.length, 'TEXT', (Ptr) text);
 }
 
 void vncFBUpdateRequest(const VNCFBUpdateReq &fbUpdateReq) {

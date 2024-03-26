@@ -18,10 +18,12 @@
 #pragma once
 
 #define USE_STDOUT               1
-#define LOG_COMPRESSION_STATS    0
+#define USE_TIGHT_AUTH           1
+#define USE_IN_PLACE_COMPRESSION 1
 
 #define USE_SANITY_CHECKS        0 // Add extra checks for debugging
-#define USE_IN_PLACE_COMPRESSION 1
+#define USE_CODE_PROFILER        0
+#define LOG_COMPRESSION_STATS    0
 
 /**
  * Specify a compression level for the color ZRLE/TRLE encoder,

@@ -141,15 +141,55 @@ unsigned long VNCEncoder::getEncoding() {
 
 char *VNCEncoder::getEncoderName(unsigned long encoding) {
         switch(encoding) {
-            case  0:   return "Raw";
-            case  5:   return "Hextile";
-            case  6:   return "Zlib";
-            case  8:   return "ZHextile";
-            case 15:   return "TRLE";
-            case 16:   return "ZRLE";
-            case -239: return "Cursor";
-            case -240: return "XCursor";
-            default:   return "";
+            case mRawEncoding:      return "Raw";
+            case mCopyRectEncoding: return "CopyRect";
+            case mRREEncoding:      return "RRE";
+            case mCoRREEncoding:    return "CoRRE";
+            case mHextileEncoding:  return "Hextile";
+            case mZLibEncoding:     return "Zlib";
+            case mTightEncoding:    return "Tight";
+            case mZHextileEncoding: return "ZHextile";
+            case mUltraEncoding:    return "Ultra";
+            case mTRLEEncoding:     return "TRLE";
+            case mZRLEEncoding:     return "ZRLE";
+            case mH264Encoding:     return "H.264";
+            case mFenceEncoding:    return "Fence";
+            case mTightPNGEncoding: return "TightPNG";
+            case mNewFBSizEncoding: return "NewFBSiz";
+            case mLastRectEncoding: return "LastRect";
+            case mMousePosEncoding: return "MousePos";
+            case mCursorEncoding:   return "Cursor";
+            case mXCursorEncoding:  return "XCursor";
+            case mQMUPtrChangeEnc:  return "QMUPtrC";
+            case mQMUExtKeyEnc:     return "QMUEKey";
+            case mQMUAudioEnc:      return "QMUAudio";
+            case mGIIEncoding:      return "GII";
+            case mDeskNameEncoding: return "DeskName";
+            case mExtDesktopSizEnc: return "ExtDSize";
+            case mContUpdtEncoding: return "ContUpdt";
+            case mCrsrWithAlphaEnc: return "CrsAlpha";
+            default:
+                if (((encoding >= 1000) && (encoding <= 1002)) ||
+                    ((encoding >= 1100) && (encoding <= 1109)) ||
+                     (encoding == 1011)) {
+                    return "Apple";
+                }
+                if ((encoding >= mTightCmpMinEnc) && (encoding <= mTightCmpMaxEnc)) {
+                    return "TightCmp";
+                }
+                if ((encoding >= mTightQtyMinEnc) && (encoding <= mTightQtyMaxEnc)) {
+                    return "TightQty";
+                }
+                if ((encoding >= mJPEGQtyMinEnc) && (encoding <= mJPEGQtyMaxEnc)) {
+                    return "JpegQty";
+                }
+                if ((encoding >= mJPEGSubMinEnc) && (encoding <= mJPEGSubMaxEnc)) {
+                    return "JpegSub";
+                }
+                if ((encoding >= mVMWareMinEnc) && (encoding <= mVMWareMaxEnc)) {
+                    return "VMWare";
+                }
+                return "";
         }
 }
 
