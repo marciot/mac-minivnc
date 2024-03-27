@@ -55,24 +55,24 @@ struct TightVNCServerInitCaps {
 };
 
 struct TightVNCFileUploadData {
-    // File Upload Start Request
-    unsigned long  message;
-    unsigned long  fNameSize;
-    const char    *filename; // char filename[fNameSize]
-    unsigned char  uploadFlags;
-    uint64         initialOffset;
+    // Common to all messages
+    unsigned long  pathLen;
+    const char    *pathPtr;
 
-    // File Upload Data Request
-    unsigned char  compressionLevel;
+    // Data about the path (filled in by processRequestPath)
+    Boolean        isRoot;
+    long           dirId;
+    short          vRefNum;
+
+    // File List Request
+    long           gmtDelta;
+    long           index;
+    long           nEntries;
+
+    // File Upload Start Request
+    short          fRefNum;
     unsigned long  compressedSize;
     unsigned long  uncompressedSize;
-    /* Followed by File[compressedSize],
-       but if (realSize = compressedSize = 0) followed by uint32_t modTime  */
-
-    // File Upload End Request
-    unsigned short fileFlags;
-    uint64         modificationTime;
-    short          fRefNum;
 };
 
 #pragma options align=packed
