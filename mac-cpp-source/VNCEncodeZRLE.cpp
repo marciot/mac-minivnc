@@ -20,7 +20,11 @@
 #include "VNCEncodeZRLE.h"
 
 #if !defined(VNC_FB_MONOCHROME)
-    #define UPDATE_BUFFER_SIZE 10L*1024
+    #if  VNC_COMPRESSION_LEVEL < 2
+        #define UPDATE_BUFFER_SIZE 16L*1024
+    #else
+        #define UPDATE_BUFFER_SIZE 10L*1024
+    #endif
 
     Size VNCEncodeZRLE::minBufferSize() {
         return UPDATE_BUFFER_SIZE;
