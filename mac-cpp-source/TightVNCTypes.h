@@ -51,7 +51,7 @@ struct TightVNCServerInitCaps {
     unsigned short numberOfClientMesg;
     unsigned short numberOfEncodings;
     unsigned short padding;
-    TightVNCCapabilites serverMsg[40];
+    TightVNCCapabilites serverMsg[16];
 };
 
 struct TightVNCFileUploadData {

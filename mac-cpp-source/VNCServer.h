@@ -42,7 +42,7 @@ struct VNCFlags {
     unsigned short clientTakesZRLE : 1;
     unsigned short clientTakesCursor : 1;
     unsigned short forceVNCAuth : 1;
-    unsigned short useTightAuth : 1;
+    unsigned short clientTakesTightAuth : 1;
     unsigned short zLibLoaded : 1;
 };
 

@@ -21,7 +21,7 @@
 
 VNCConfig vncConfig = {
     1,            // Major version
-    3,            // Minor version
+    4,            // Minor version
     true,         // allowStreaming
     true,         // allowIncremental
     true,         // allowControl
@@ -32,6 +32,7 @@ VNCConfig vncConfig = {
     true,         // allowZRLE
     false,        // autoRestart
     false,        // forceVNCAuth
+    false,        // allowTightAuth
     false,        // enableLogging
     5,            // zLibCompression
     "\pMacintosh",// Session name
@@ -89,8 +90,8 @@ OSErr LoadPreferences() {
                      (((VNCConfig*)*ourPref)->majorVersion == vncConfig.majorVersion) &&
                      (((VNCConfig*)*ourPref)->validation   == vncConfig.validation) ) {
                     // Read in the configuration settings
-                    dprintf("Loading preferences.\nTo change settings marked with [ResEdit], edit \"%#s\" in ResEdit\n", prefFileName);
                     BlockMove((Ptr)*ourPref, &vncConfig, sizeof(VNCConfig));
+                    dprintf("Loading preferences.\nTo change settings marked with [ResEdit], edit \"%#s\" in ResEdit\n", prefFileName);
                 } else {
                     dprintf("Deleting invalid configuration, using defaults\n");
                     // Resource is invalid, remove it

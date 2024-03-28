@@ -78,6 +78,7 @@ struct VNCConfig {
     unsigned short allowZRLE : 1;
     unsigned short autoRestart : 1;
     unsigned short forceVNCAuth : 1;
+    unsigned short allowTightAuth : 1;
     unsigned short enableLogging : 1;
     unsigned short : 0;
     unsigned char  zLibLevel;

@@ -140,7 +140,7 @@ VNCFlags vncFlags = {
     false, // clientTakesZRLE
     false, // clientTakesCursor
     false, // forceVNCAuth
-    false, // useTightAuth
+    false, // clientTakesTightAuth
     false  // zLibLoaded
 };
 
@@ -194,6 +194,12 @@ OSErr vncServerStart() {
     if(vncError != noErr) return vncError;
     dprintf("Reserved %d bytes for receive buffer\n", kBufSize);
 
+    #if USE_TIGHT_AUTH
+        if (vncConfig.allowTightAuth) {
+            loadTightSupport();
+        }
+    #endif
+
     vncState = VNC_STARTING;
     dprintf("Creating network stream\n");
     tcp.then(&epb_recv.pb, tcpStreamCreated);
@@ -201,10 +207,6 @@ OSErr vncServerStart() {
 
     // Set the forceVNCAuth to the default
     vncFlags.forceVNCAuth = vncConfig.forceVNCAuth;
-
-    #if USE_TIGHT_AUTH
-        loadTightSupport();
-    #endif
 
     return noErr;
 }
@@ -334,7 +336,7 @@ pascal void tcpSendAuthTypes(TCPiopb *pb) {
             dprintf("Client VNC Version: %11s\n", vncServerMessage.protocol.version);
         #endif
 
-        vncFlags.useTightAuth = false;
+        vncFlags.clientTakesTightAuth = false;
         const unsigned char serverDefaultAuthType = vncFlags.forceVNCAuth ? mVNCAuthentication : mNoAuthentication;
 
         if(vncServerMessage.protocol.version[10] == '7' || vncServerMessage.protocol.version[10] == '8') {
@@ -342,8 +344,10 @@ pascal void tcpSendAuthTypes(TCPiopb *pb) {
             vncServerMessage.authTypeList.numberOfAuthTypes = 1;
             vncServerMessage.authTypeList.authTypes[0] = serverDefaultAuthType;
             #if USE_TIGHT_AUTH
-                vncServerMessage.authTypeList.numberOfAuthTypes = 2;
-                vncServerMessage.authTypeList.authTypes[1] = mTightAuth;
+                if (vncConfig.allowTightAuth) {
+                    vncServerMessage.authTypeList.numberOfAuthTypes = 2;
+                    vncServerMessage.authTypeList.authTypes[1] = mTightAuth;
+                }
             #endif
 
             #ifdef VNC_DEBUG
@@ -392,7 +396,9 @@ pascal void tcpProcessAuthType(TCPiopb *pb) {
         switch(vncClientMessage.message) {
             #if USE_TIGHT_AUTH
                 case mTightAuth:
-                    tcpSendTightVNCAuthTypes(pb);
+                    if (vncConfig.allowTightAuth) {
+                        tcpSendTightVNCAuthTypes(pb);
+                    }
                     break;
             #endif
             case mNoAuthentication:
@@ -531,7 +537,9 @@ pascal void tcpSendServerInit(TCPiopb *pb) {
         myWDS[0].length = sizeof(vncServerMessage.init) - sizeof(vncServerMessage.init.name) + vncServerMessage.init.nameLength;
 
         #if USE_TIGHT_AUTH
-            sendTightCapabilities();
+            if (vncConfig.allowTightAuth) {
+                sendTightCapabilities();
+            }
         #endif
 
         // Set the forceVNCAuth to the default
@@ -571,7 +579,9 @@ DispatchMsgResult dispatchClientMessage(MessageData *pb) {
             break;
     #if USE_TIGHT_AUTH
         case mTightVNCExt:
-            return dispatchTightClientMessage(pb);
+            if (vncConfig.allowTightAuth) {
+                return dispatchTightClientMessage(pb);
+            }
     #endif
         default:
             dprintf("Invalid message: %d\n", pb->msgPtr->message);

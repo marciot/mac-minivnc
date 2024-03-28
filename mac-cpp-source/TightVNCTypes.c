@@ -34,32 +34,22 @@ struct TightVNCServerAuthCaps tightAuthCaps = {
     }
 };
 
-#define USE_NEW_MESSAGES 1
-
 struct TightVNCServerInitCaps tightInitCaps = {
-#if USE_NEW_MESSAGES
-   13, // numberOfServerMesg
-   14, // numberOfClientMesg
+    7, // numberOfServerMesg
+    6, // numberOfClientMesg
     3, // numberOfEncodings
     0, // padding
-#else
-    4, // numberOfServerMesg
-    7, // numberOfClientMesg
-    3, // numberOfEncodings
-    0, // padding
-#endif
 
     {
         /***** Server Messages *****/
 
         // Legacy File Transfer Messages
 
-        {  130,        "TGHT", "FTS_LSDT"}, // File list data
-        {  131,        "TGHT", "FTS_DNDT"}, // File download data
-        {  132,        "TGHT", "FTS_UPCN"}, // File upload cancel
-        {  133,        "TGHT", "FTS_DNFL"}, // File download failed
+        //{  130,        "TGHT", "FTS_LSDT"}, // File list data
+        //{  131,        "TGHT", "FTS_DNDT"}, // File download data
+        //{  132,        "TGHT", "FTS_UPCN"}, // File upload cancel
+        //{  133,        "TGHT", "FTS_DNFL"}, // File download failed
 
-    #if USE_NEW_MESSAGES
         // New TightVNC File Transfer Messages:
 
         //{  0xFC000101, "TGHT", "FTSCSRLY"}, // Compression support reply
@@ -70,31 +60,29 @@ struct TightVNCServerInitCaps tightInitCaps = {
         {  0xFC000109, "TGHT", "FTSUDRLY"}, // Upload data reply
         {  0xFC00010B, "TGHT", "FTSUERLY"}, // Upload end reply
 
-        {  0xFC00010D, "TGHT", "FTSFDRLY"}, // Download start reply
-        {  0xFC00010F, "TGHT", "FTSDDRLY"}, // Download data reply
-        {  0xFC000110, "TGHT", "FTSDERLY"}, // Download end reply
+        //{  0xFC00010D, "TGHT", "FTSFDRLY"}, // Download start reply
+        //{  0xFC00010F, "TGHT", "FTSDDRLY"}, // Download data reply
+        //{  0xFC000110, "TGHT", "FTSDERLY"}, // Download end reply
 
         {  0xFC000112, "TGHT", "FTSMDRLY"}, // Mkdir reply
-        //{  0xFC000114, "TGHT", "FTSFTRLY"}, // File remove reply
+        {  0xFC000114, "TGHT", "FTSFTRLY"}, // File remove reply
         //{  0xFC000116, "TGHT", "FTSFMRLY"}, // File rename reply
         //{  0xFC000118, "TGHT", "FTSDSRLY"}, // Dir size reply
 
         {  0xFC000119, "TGHT", "FTLRFRLY"}, // Last request failed reply
-    #endif
 
         /***** Client Messages *****/
 
         // Legacy File Transfer Messages
 
-        {  130,        "TGHT", "FTC_LSRQ"}, // File list request
-        {  131,        "TGHT", "FTC_DNRQ"}, // File download request
-        {  132,        "TGHT", "FTC_UPRQ"}, // File upload request
-        {  133,        "TGHT", "FTC_UPDT"}, // File upload data
-        {  134,        "TGHT", "FTC_DNCN"}, // File download cancel
-        {  135,        "TGHT", "FTC_UPFL"}, // File upload failed
-        {  136,        "TGHT", "FTC_FCDR"}, // File create directory request
+        //{  130,        "TGHT", "FTC_LSRQ"}, // File list request
+        //{  131,        "TGHT", "FTC_DNRQ"}, // File download request
+        //{  132,        "TGHT", "FTC_UPRQ"}, // File upload request
+        //{  133,        "TGHT", "FTC_UPDT"}, // File upload data
+        //{  134,        "TGHT", "FTC_DNCN"}, // File download cancel
+        //{  135,        "TGHT", "FTC_UPFL"}, // File upload failed
+        //{  136,        "TGHT", "FTC_FCDR"}, // File create directory request
 
-    #if USE_NEW_MESSAGES
         // New TightVNC File Transfer Messages:
 
         //{  0xFC000100, "TGHT", "FTCCSRST"}, // Compression support request
@@ -105,15 +93,13 @@ struct TightVNCServerInitCaps tightInitCaps = {
         {  0xFC000108, "TGHT", "FTCUDRST"}, // Upload data request
         {  0xFC00010A, "TGHT", "FTCUERST"}, // Upload end request
 
-        {  0xFC00010C, "TGHT", "FTCFDRST"}, // Download start request
-        {  0xFC00010E, "TGHT", "FTCDDRST"}, // Download data request
+        //{  0xFC00010C, "TGHT", "FTCFDRST"}, // Download start request
+        //{  0xFC00010E, "TGHT", "FTCDDRST"}, // Download data request
 
         {  0xFC000111, "TGHT", "FTCMDRST"}, // Mkdir request (required for upload/download)
-        //{  0xFC000113, "TGHT", "FTCFRRST"}, // File remove request
+        {  0xFC000113, "TGHT", "FTCFRRST"}, // File remove request
         //{  0xFC000115, "TGHT", "FTCFMRST"}, // File rename request
         //{  0xFC000117, "TGHT", "FTCDSRST"}, // Dir size request (required for download)
-
-    #endif
 
         /***** Encodings *****/
 
