@@ -62,6 +62,7 @@ void VNCEncodeHextile::begin() {
         return ((lastRect->y == candidate->b) && // Can we merge with this rectangle?
                 (lastRect->c == candidate->c) &&
                 (lastRect->w == candidate->w) &&
+                (lastRect->x == candidate->x) &&
                 (lastRect != sRects)          &&
                // If so, grow the found rectangle
                (candidate->b++, true));
