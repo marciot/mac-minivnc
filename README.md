@@ -27,23 +27,24 @@ but these encodings are limited to color-capable Macs.
 
 Here are the server capabilities:
 
-| Server               | OS      | TRLE  | ZRLE    | Hextile | Notes                             |
-|----------------------|---------|-------|---------|---------|-----------------------------------|
-| [MiniVNC v1.3]       | macOS 7 | Yes   |  Yes    |  Yes    | Comptible with all tested clients |
-| [MiniVNC v1.2]       | macOS 7 | Yes   |  Yes    |  Yes    | Crashes [TurboVNC]                |
-| [MiniVNC v0.9]       | macOS 7 | Yes   |  No     |  No     | Only works with [RealVNC Viewer]  | 
+| Server               | OS      | TRLE  | ZRLE    | Hextile | Uploads | Notes                              |
+|----------------------|---------|-------|---------|---------|---------|------------------------------------|
+| [MiniVNC v1.4]       | macOS 7 | Yes   |  Yes    |  Yes    |  Yes    | Compatible with all tested clients |
+| [MiniVNC v1.3]       | macOS 7 | Yes   |  Yes    |  Yes    |  No     | Compatible with all tested clients |
+| [MiniVNC v1.2]       | macOS 7 | Yes   |  Yes    |  Yes    |  No     | Crashes [TurboVNC]                 |
+| [MiniVNC v0.9]       | macOS 7 | Yes   |  No     |  No     |  No     | Only works with [RealVNC Viewer]   |
 
 Here are the client capabilities:
 
-| Client               | OS      | TRLE  | ZRLE    | Hextile | Palette | Notes                    |
-|----------------------|---------|-------|---------|---------|---------|--------------------------|
-| [RealVNC Viewer]     | Windows | Yes   |  Yes    |  Yes    |  Yes    | Only viewer for B&W Macs |
-| [TightVNC]           | Windows | No    |  Yes    |  Yes    |  No     | Requires MiniVNC 1.2+    |
-| [TurboVNC]           | Windows | No    |  Yes    |  Yes    |  No     | Requires MiniVNC 1.3+    |
-| [TigerVNC]           | Windows | No    |  Yes    |  Yes    |  No     | Tested w/ MiniVNC 1.3+   |                         |
-| [MacVNC]             | macOS 7 | No    |  No     |  Yes    |  No     | Requires MiniVNC 1.2+    |
-| [VNCThing 2.2]       | macOS 8 | No    |  No     |  Yes    |  No     | Requires MiniVNC 1.2+    |
-| Screen Sharing       | macOS X | No    |  Yes    |  No     |  No     | Requires MiniVNC 1.2+    |
+| Client               | OS      | TRLE  | ZRLE    | Hextile | Palette | Uploads | Notes                    |
+|----------------------|---------|-------|---------|---------|---------|---------|--------------------------|
+| [RealVNC Viewer]     | Windows | Yes   |  Yes    |  Yes    |  Yes    |  No     | Only viewer for B&W Macs |
+| [TightVNC]           | Windows | No    |  Yes    |  Yes    |  No     |  Yes    | Requires MiniVNC 1.2+    |
+| [TurboVNC]           | Windows | No    |  Yes    |  Yes    |  No     |  No     | Requires MiniVNC 1.3+    |
+| [TigerVNC]           | Windows | No    |  Yes    |  Yes    |  No     |  No     | Tested w/ MiniVNC 1.3+   |
+| [MacVNC]             | macOS 7 | No    |  No     |  Yes    |  No     |  No     | Requires MiniVNC 1.2+    |
+| [VNCThing 2.2]       | macOS 8 | No    |  No     |  Yes    |  No     |  No     | Requires MiniVNC 1.2+    |
+| Screen Sharing       | macOS X | No    |  Yes    |  No     |  No     |  No     | Requires MiniVNC 1.2+    |
 
 MiniVNC is built on MacTCP and requires System 7, but it will
 operate on later Macs using Open Transport. MiniVNC has been
@@ -60,6 +61,7 @@ Ethernet port.
 [MiniVNC v0.9]:https://github.com/marciot/mac-minivnc/releases/tag/v0.9-beta-march-19
 [MiniVNC v1.2]:https://github.com/marciot/mac-minivnc/releases/tag/v1.2-beta-jan-10-2024
 [MiniVNC v1.3]:https://github.com/marciot/mac-minivnc/releases/tag/v1.3-beta-mar-3-2024
+[MiniVNC v1.4]:https://github.com/marciot/mac-minivnc/releases/tag/v1.4-beta-mar-28-2024
 
 Sponsorship Perks
 -----------------
@@ -98,6 +100,7 @@ It accomplishes these goals by:
 - Using Classic Networking (i.e. [MacTCP]) rather than Open Transport
 - Implementing a limited subset of the [Remote Framebuffer Protocol],
 which favor of performance over full compatibility with all clients.
+- Implement modern extensions, such as file uploads, where possible.
 - Implements fast but inexact screen change detection, favoring
 performance and low memory utilization while allowing for the occasional
 missed update and visual artifacts.
