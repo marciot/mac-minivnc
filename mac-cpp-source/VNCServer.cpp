@@ -280,7 +280,7 @@ pascal void tcpStreamCreated(TCPiopb *pb) {
         stream = tcp.getStream(pb);
         dprintf("Waiting for connection on port %d [ResEdit]\n", vncConfig.tcpPort);
         tcp.then(pb, tcpSendProtocolVersion);
-        tcp.waitForConnection(pb, stream, kTimeOut, vncConfig.tcpPort);
+        tcp.waitForConnection(pb, stream, 0, vncConfig.tcpPort);
     }
 }
 
