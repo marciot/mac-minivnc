@@ -17,32 +17,14 @@
 
 #pragma once
 
-#include "VNCTypes.h"
-#include <Retrace.h>
+#include "MacTCP.h"
+#include "VNCEncoder.h"
 
-#define requestAlreadyScheduled -999
-
-typedef pascal void (*HashCallbackPtr)(int x, int y, int w, int h);
-
-class VNCScreenHash {
-    private:
-        static pascal void myVBLTask(VBLTaskPtr theVBL);
-        static asm pascal void preVBLTask();
-        static OSErr makeVBLTaskPersistent(VBLTaskPtr task);
-        static OSErr disposePersistentVBLTask(VBLTaskPtr task);
-
-        static OSErr initVBLTask();
-        static OSErr destroyVBLTask();
-        static OSErr runVBLTask();
-
-        static void beginCompute();
-        static void computeHashes(unsigned int rows);
-        static void computeHashesFast(unsigned int rows);
-        static void computeHashesFastest(unsigned int rows);
-        static void computeDirty(int &x, int &y, int &w, int &h);
-        static void endCompute();
+class VNCEncodeTight {
     public:
-        static OSErr setup();
-        static OSErr destroy();
-        static OSErr requestDirtyRect(HashCallbackPtr);
+        static Size minBufferSize();
+        static void begin();
+
+        static Boolean getChunk(wdsEntry *wds);
 };
+

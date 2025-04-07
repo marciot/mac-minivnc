@@ -38,14 +38,26 @@ enum {
     mFBUpdateRequest  = 3,
     mKeyEvent         = 4,
     mPointerEvent     = 5,
-    mClientCutText    = 6
+    mClientCutText    = 6,
+    mEnableContUpdate = 150,
+    mClientFence      = 248
 };
 
 enum {
     mFBUpdate         = 0,
     mSetCMapEntries   = 1,
     mBell             = 2,
-    mServerCutText    = 3
+    mServerCutText    = 3,
+    mEndOfContUpdate  = 150,
+    mServerFence      = 248
+};
+
+enum {
+    mFenceBlockBefore = 1,
+    mFenceBlockAfter  = 2,
+    mFenceSyncNext    = 3,
+    mFenceRequest     = 0x80000000,
+    mFenceReqMask     = 0x7F000000
 };
 
 /*
@@ -209,14 +221,29 @@ struct VNCClientCutText {
     unsigned long length;
 };
 
+struct VNCEnableContUpdates{
+    unsigned char  message;
+    unsigned char  enable;
+    VNCRect        rect;
+};
+
+struct VNCFenceMessage {
+    unsigned char  message;
+    unsigned char  padding[3];
+    unsigned long  flags;
+    unsigned char  length;
+};
+
 union VNCClientMessages {
-    char                    message;
+    unsigned char           message;
     VNCSetPixFormat         pixFormat;
     VNCSetEncoding          setEncoding;
     VNCFBUpdateReq          fbUpdateReq;
     VNCKeyEvent             keyEvent;
     VNCPointerEvent         pointerEvent;
     VNCClientCutText        cutText;
+    VNCEnableContUpdates    contUpdt;
+    VNCFenceMessage         fence;
 
     // TightVNC Messages
     long                    tightVncExtMsg;
@@ -225,6 +252,8 @@ union VNCClientMessages {
 };
 
 union VNCServerMessages {
+    unsigned char           message;
+    unsigned long           tightMessage;
     VNCServerProto          protocol;
     VNCServerAuthTypeList   authTypeList;
     VNCServerAuthType       authType;
@@ -234,4 +263,7 @@ union VNCServerMessages {
     VNCFBUpdate             fbUpdate;
     VNCFBUpdateRect         fbUpdateRect;
     VNCSetColorMapHeader    fbColorMap;
+    VNCFenceMessage         fence;
 };
+
+typedef unsigned long size_t;

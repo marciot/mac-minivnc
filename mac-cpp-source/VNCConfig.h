@@ -18,12 +18,13 @@
 #pragma once
 
 #define USE_STDOUT               1
-#define USE_TIGHT_AUTH           1
+#define USE_TIGHT_AUTH           1 // Use tight auth and file transfers
+#define USE_TURBO_FEATURES       1 // Use fence and continuous updates
 #define USE_IN_PLACE_COMPRESSION 1
 
 #define USE_SANITY_CHECKS        0 // Add extra checks for debugging
 #define USE_CODE_PROFILER        0
-#define LOG_COMPRESSION_STATS    0
+#define LOG_COMPRESSION_STATS    1
 
 /**
  * Specify a compression level for the color ZRLE/TRLE encoder,
@@ -39,7 +40,7 @@
  * for connections after a client disconnects, allowing
  * MiniVNC to be used in headless server mode.
  */
-//#define VNC_HEADLESS_MODE
+#define VNC_HEADLESS_MODE
 
 /**
  * To build for a specific resolution, uncomment one of
@@ -76,9 +77,10 @@ struct VNCConfig {
     unsigned short allowHextile : 1;
     unsigned short allowTRLE : 1;
     unsigned short allowZRLE : 1;
+    unsigned short allowTightEnc : 1;
+    unsigned short allowTightAuth : 1;
     unsigned short autoRestart : 1;
     unsigned short forceVNCAuth : 1;
-    unsigned short allowTightAuth : 1;
     unsigned short enableLogging : 1;
     unsigned short : 0;
     unsigned char  zLibLevel;
@@ -86,6 +88,29 @@ struct VNCConfig {
     unsigned short tcpPort;
     unsigned long  validation;
 };
+
+#define VNC_CONFIG_DEFAULTS { \
+    1,            /* majorVersion */ \
+    5,            /* minorVersion */ \
+    true,         /* allowStreaming */ \
+    true,         /* allowIncremental */ \
+    true,         /* allowControl */ \
+    true,         /* hideCursor */ \
+    true,         /* allowRaw */ \
+    true,         /* allowHexTile */ \
+    true,         /* allowTRLE */ \
+    true,         /* allowZRLE */ \
+    false,        /* allowTightEnc */ \
+    false,        /* allowTightAuth */ \
+    false,        /* autoRestart */ \
+    false,        /* forceVNCAuth */ \
+    false,        /* enableLogging */ \
+    5,            /* zLibLevel */ \
+    "\pMacintosh",/* sessionName */ \
+    5900,         /* tcpPort */ \
+    'µVNC'        /* validation */ \
+};
+
 
 extern VNCConfig vncConfig;
 

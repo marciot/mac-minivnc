@@ -100,7 +100,7 @@ OSErr VNCScreenHash::setup() {
     OSErr err = makeVBLTaskPersistent(&evbl.vblTask);
 
     // Compute the first checksum
-    requestDirtyRect(0, 0, 0, 0, 0);
+    requestDirtyRect(0);
     return err;
 }
 
@@ -174,7 +174,7 @@ asm pascal void VNCScreenHash::preVBLTask() {
     dc.w    0x0000
 }
 
-OSErr VNCScreenHash::requestDirtyRect(int x, int y, int w, int h, HashCallbackPtr func) {
+OSErr VNCScreenHash::requestDirtyRect(HashCallbackPtr func) {
     if(callback == NULL) {
         evbl.vblTask.vblCount = 1;
 

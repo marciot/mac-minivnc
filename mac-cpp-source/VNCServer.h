@@ -36,15 +36,36 @@ struct VNCFlags {
     unsigned short fbColorMapNeedsUpdate : 1;
     unsigned short fbUpdateInProgress : 1;
     unsigned short fbUpdatePending : 1;
+    unsigned short fbUpdateContinuous : 1;
     unsigned short clientTakesRaw : 1;
     unsigned short clientTakesHextile : 1;
     unsigned short clientTakesTRLE : 1;
     unsigned short clientTakesZRLE : 1;
     unsigned short clientTakesCursor : 1;
-    unsigned short forceVNCAuth : 1;
+    unsigned short clientTakesContUpdt : 1;
+    unsigned short clientTakesFence : 1;
+    unsigned short clientTakesTightEnc : 1;
     unsigned short clientTakesTightAuth : 1;
+    unsigned short forceVNCAuth : 1;
     unsigned short zLibLoaded : 1;
 };
+
+#define VNC_FLAGS_DEFAULTS { \
+    false, /* fbColorMapNeedsUpdate */ \
+    false, /* fbUpdateInProgress */ \
+    false, /* fbUpdatePending */ \
+    false, /* fbUpdateContinuous */ \
+    false, /* clientTakesRaw */ \
+    false, /* clientTakesHexTile */ \
+    false, /* clientTakesTRLE */ \
+    false, /* clientTakesZRLE */ \
+    false, /* clientTakesCursor */ \
+    false, /* clientTakesContUpdt */ \
+    false, /* clientTakesFence */ \
+    false, /* clientTakesTightAuth */ \
+    false, /* forceVNCAuth */ \
+    false  /* zLibLoaded */ \
+}
 
 Boolean _tcpSuccess(TCPiopb *pb, unsigned int line);
 #define tcpSuccess(A) _tcpSuccess(A,__LINE__)
@@ -55,6 +76,7 @@ extern wdsEntry           myWDS[];
 extern rdsEntry           myRDS[];
 extern StreamPtr          stream;
 extern VNCClientMessages  vncClientMessage;
+extern VNCServerMessages  vncServerMessage;
 
 extern VNCState           vncState;
 extern VNCConfig          vncConfig;
@@ -68,6 +90,10 @@ extern pascal void        vncFBSyncTasksDone();
 
 pascal void tcpSendAuthResult(TCPiopb *pb);
 pascal void tcpSendAuthChallenge(TCPiopb *pb);
+pascal void tcpFinishMultiPartMessage(TCPiopb *pb);
+
+void tcpSendReply(Ptr ptr, size_t length, TCPCompletionPtr proc);
+void vncSendReplyMessage(unsigned char message, TCPCompletionPtr proc);
 
 OSErr vncServerStart();
 OSErr vncServerStop();
@@ -137,5 +163,3 @@ Boolean vncServerActive();
    for (; n_ > 0; --n_, ++a_)\
      *a_ = (T) 0;\
 } while (0)
-
-typedef unsigned long size_t;

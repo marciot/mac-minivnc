@@ -63,6 +63,7 @@ pascal void vncReadMessages(TCPiopb *pb);
 pascal void vncGotNewMessages(TCPiopb *pb);
 pascal void vncProcessMessages(TCPiopb *pb);
 pascal void vncSendColorMapEntries(TCPiopb *pb);
+pascal void vncInitialServerFence(TCPiopb *pb);
 
 void vncSetPixelFormat(const VNCSetPixFormat &);
 void vncEncoding(unsigned long, Boolean);
@@ -71,6 +72,8 @@ void vncPointerEvent(const VNCPointerEvent &);
 void vncClientCutText(const VNCClientCutText &, const char *);
 void vncFBUpdateRequest(const VNCFBUpdateReq &);
 void vncSendFBUpdate(Boolean incremental);
+void vncEnableContUpdates(const VNCEnableContUpdates &contUpdt);
+void vncClientFence(const VNCFenceMessage &fence);
 
 pascal void vncGotDirtyRect(int x, int y, int w, int h);
 pascal void vncPrepareForFBUpdate();
@@ -129,20 +132,7 @@ VNCRect            fbUpdateRect;
 #endif
 
 VNCState vncState = VNC_STOPPED;
-
-VNCFlags vncFlags = {
-    false, // fbColorMapNeedsUpdate
-    false, // fbUpdateInProgress
-    false, // fbUpdatePending
-    false, // clientTakesRaw
-    false, // clientTakesHexTile
-    false, // clientTakesTRLE
-    false, // clientTakesZRLE
-    false, // clientTakesCursor
-    false, // forceVNCAuth
-    false, // clientTakesTightAuth
-    false  // zLibLoaded
-};
+VNCFlags vncFlags = VNC_FLAGS_DEFAULTS;
 
 #if USE_NOTIFY_PROC
     pascal void vncNotifyProc(StreamPtr tcpStream, unsigned short eventCode, Ptr userDataPtr, unsigned short terminReason, struct ICMPReport *icmpMsg);
@@ -520,6 +510,7 @@ pascal void tcpSendServerInit(TCPiopb *pb) {
         VNCPalette::beginNewSession(vncServerMessage.init.format);
         vncFlags.fbUpdateInProgress = false;
         vncFlags.fbUpdatePending = false;
+        vncFlags.fbUpdateContinuous = false;
 
         fbUpdateRect.x = 0;
         fbUpdateRect.y = 0;
@@ -565,6 +556,23 @@ DispatchMsgResult dispatchClientMessage(MessageData *pb) {
         case mClientCutText:
             MAIN_LOOP_ONLY();
             DISPATCH_MSGWSTR(vncClientCutText, cutText, length);
+   #if USE_TURBO_FEATURES
+        case mClientFence:
+            READ_ALL(fence);
+            READ_STR(fence.length);
+            vncClientFence(pb->msgPtr->fence);
+            return returnToCaller;
+        case mEnableContUpdate:
+            MAIN_LOOP_ONLY();
+            READ_ALL(contUpdt);
+            vncEnableContUpdates(pb->msgPtr->contUpdt);
+            if (!pb->msgPtr->contUpdt.enable) {
+                // Notify client that continuous updates are off
+                vncSendReplyMessage(mEndOfContUpdate, tcpFinishMultiPartMessage);
+                return returnToCaller;
+            }
+            break;
+   #endif // USE_TURBO_FEATURES
         case mSetEncodings:
             MUST_COPY();
             READ_ALL(setEncoding);
@@ -576,6 +584,18 @@ DispatchMsgResult dispatchClientMessage(MessageData *pb) {
                 pb->msgAvail -= sizeof(vncClientMessage.setEncoding.encoding);
                 return msgTooShort;
             }
+   #if USE_TURBO_FEATURES
+            if (vncFlags.clientTakesContUpdt) {
+                // Notify client that continuous updates are supported
+                dprintf("TurboVNC: End of continuous updates\n");
+                vncSendReplyMessage(mEndOfContUpdate, vncFlags.clientTakesFence ? vncInitialServerFence : tcpFinishMultiPartMessage);
+                return returnToCaller;
+            }
+            if(vncFlags.clientTakesFence) {
+                vncInitialServerFence(&epb_send.pb);
+                return returnToCaller;
+            }
+    #endif // USE_TURBO_FEATURES
             break;
     #if USE_TIGHT_AUTH
         case mTightVNCExt:
@@ -763,13 +783,18 @@ pascal void vncProcessMessages(TCPiopb *pb) {
     }
 }
 
-void returnFromTightVNCMessage() {
-    TCPiopb *pb = &epb_recv.pb;
-    if(inStream.finished()) {
-        tcp.then(pb, vncReadMessages);
-        tcp.receiveReturnBuffers(pb);
-    } else {
-        vncProcessMessages(pb);
+pascal void tcpFinishMultiPartMessage(TCPiopb *pb) {
+    if (tcpSuccess(pb)) {
+        dprintf("==== Finishing deferred messages ====\n");
+        vncFlags.fbUpdateInProgress = false;
+
+        TCPiopb *pb = &epb_recv.pb;
+        if(inStream.finished()) {
+            tcp.then(pb, vncReadMessages);
+            tcp.receiveReturnBuffers(pb);
+        } else {
+            vncProcessMessages(pb);
+        }
     }
 }
 
@@ -868,9 +893,76 @@ void vncClientCutText(const VNCClientCutText &cutText, const char *text) {
     PutScrap (cutText.length, 'TEXT', (Ptr) text);
 }
 
+#if USE_TURBO_FEATURES
+    void vncClientFence(const VNCFenceMessage &fence) {
+        dprintf("TurboVNC: Got fence request %ld\n", fence.flags);
+
+        // Send the reply to the fence request
+        if (fence.flags & mFenceRequest) {
+            vncServerMessage.fence.message = mServerFence;
+            vncServerMessage.fence.flags  &= mFenceReqMask;
+            tcpSendReply((Ptr)&vncServerMessage, sizeof(vncServerMessage.fence) + vncServerMessage.fence.length, tcpFinishMultiPartMessage);
+        }
+    }
+
+    pascal void vncDoNothing(TCPiopb *pb);
+    pascal void vncDoNothing(TCPiopb *pb) {
+    }
+
+    void vncEndOfFrameSync();
+    void vncEndOfFrameSync() {
+        dprintf("TurboVNC: End of frame sync\n");
+        vncServerMessage.fence.message    = mServerFence;
+        vncServerMessage.fence.padding[0] = 0;
+        vncServerMessage.fence.padding[1] = 0;
+        vncServerMessage.fence.padding[2] = 0;
+        vncServerMessage.fence.flags      = mFenceBlockBefore;
+        vncServerMessage.fence.length     = 0;
+        tcpSendReply((Ptr)&vncServerMessage, sizeof(vncServerMessage.fence), vncDoNothing);
+    }
+
+    pascal void vncInitialServerFence(TCPiopb *pb) {
+        if (tcpSuccess(pb)) {
+            dprintf("TurboVNC: Sending initial server fence\n");
+            vncServerMessage.fence.message    = mServerFence;
+            vncServerMessage.fence.padding[0] = 0;
+            vncServerMessage.fence.padding[1] = 0;
+            vncServerMessage.fence.padding[2] = 0;
+            vncServerMessage.fence.flags      = 7;
+            vncServerMessage.fence.length     = 0;
+            tcpSendReply((Ptr)&vncServerMessage, sizeof(vncServerMessage.fence), tcpFinishMultiPartMessage);
+        }
+    }
+
+    void vncEnableContUpdates(const VNCEnableContUpdates &contUpdt) {
+        dprintf("TurboVNC: Got continuous update request, enable: %d, Rect: %d,%d,%d,%d\n", contUpdt.enable, contUpdt.rect.x, contUpdt.rect.y, contUpdt.rect.w, contUpdt.rect.h);
+        if (!vncFlags.fbUpdateContinuous && contUpdt.enable) {
+            vncSendFBUpdate(true);
+        }
+        vncFlags.fbUpdateContinuous = contUpdt.enable;
+    }
+#endif // USE_TURBO_FEATURES
+
+void tcpSendReply(Ptr ptr, size_t length, TCPCompletionPtr proc) {
+    myWDS[0].ptr    = ptr;
+    myWDS[0].length = length;
+    myWDS[1].ptr    = 0;
+    myWDS[1].length = 0;
+
+    TCPiopb *pb = &epb_send.pb;
+    tcp.then(pb, proc);
+    tcp.send(pb, stream, myWDS, kTimeOut, false);
+}
+
+void vncSendReplyMessage(unsigned char message, TCPCompletionPtr proc) {
+    vncServerMessage.message = message;
+    tcpSendReply((Ptr)&vncServerMessage, sizeof(vncServerMessage.message), proc);
+}
+
 void vncFBUpdateRequest(const VNCFBUpdateReq &fbUpdateReq) {
-    //dprintf("Got frame request, incremental: %d, Rect: %d,%d,%d,%d\n", fbUpdateReq.incremental, fbUpdateReq.rect.x, fbUpdateReq.rect.y, fbUpdateReq.rect.w, fbUpdateReq.rect.h);
+    dprintf("Got frame request, incremental: %d, Rect: %d,%d,%d,%d\n", fbUpdateReq.incremental, fbUpdateReq.rect.x, fbUpdateReq.rect.y, fbUpdateReq.rect.w, fbUpdateReq.rect.h);
     if(!vncConfig.allowStreaming) return;
+    if(vncFlags.fbUpdateContinuous && fbUpdateReq.incremental) return;
     if(vncFlags.fbUpdateInProgress) {
         vncFlags.fbUpdatePending = true;
     } else {
@@ -885,9 +977,8 @@ pascal void vncGotDirtyRect(int x, int y, int w, int h) {
         dprintf("Got dirty rect while busy\n");
         return;
     }
-    //dprintf("Got dirty rect");
     if (vncState == VNC_RUNNING) {
-        //dprintf("%d,%d,%d,%d\n",x,y,w,h);
+        dprintf("Got dirty rect: %d,%d,%d,%d\n",x,y,w,h);
         fbUpdateRect.x = x;
         fbUpdateRect.y = y;
         fbUpdateRect.w = w;
@@ -899,14 +990,8 @@ pascal void vncGotDirtyRect(int x, int y, int w, int h) {
 void vncSendFBUpdate(Boolean incremental) {
     if (incremental && !VNCPalette::hasChangesPending()) {
         // Ask the VBL task to determine what needs to be updated
-        //dprintf("Requesting dirty rect\n");
-        OSErr err = VNCScreenHash::requestDirtyRect(
-            fbUpdateRect.x,
-            fbUpdateRect.y,
-            fbUpdateRect.w,
-            fbUpdateRect.h,
-            vncGotDirtyRect
-        );
+        dprintf("Requesting dirty rect\n");
+        OSErr err = VNCScreenHash::requestDirtyRect(vncGotDirtyRect);
         if((err != noErr) && (err != requestAlreadyScheduled)) {
             dprintf("Failed to request update (OSErr:%d)\n", err);
             vncError = err;
@@ -1080,6 +1165,12 @@ pascal void vncFinishFBUpdate(TCPiopb *pb) {
     if(vncFlags.fbUpdatePending) {
         vncSendFBUpdate(true);
     }
+#if USE_TURBO_FEATURES
+    if (vncFlags.fbUpdateContinuous) {
+        vncEndOfFrameSync();
+        vncSendFBUpdate(true);
+    }
+#endif
 
 #if POLL_CONNECTION_STATUS
     else {

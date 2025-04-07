@@ -26,6 +26,7 @@
 #include "VNCEncodeHextile.h"
 #include "VNCEncodeTRLE.h"
 #include "VNCEncodeZRLE.h"
+#include "VNCEncodeTight.h"
 #include "VNCEncodeCursor.h"
 #include "DebugLog.h"
 
@@ -59,15 +60,17 @@ OSErr VNCEncoder::freeMemory() {
 
 void VNCEncoder::clear() {
     #if !defined(VNC_FB_MONOCHROME)
-        if (selectedEncoder == mZRLEEncoding) {
+        if (encoderNeedsZLib()) {
             compressReset();
         }
     #endif
-    vncFlags.clientTakesRaw     = false;
-    vncFlags.clientTakesHextile = false;
-    vncFlags.clientTakesTRLE    = false;
-    vncFlags.clientTakesZRLE    = false;
-    vncFlags.clientTakesCursor  = false;
+    vncFlags.clientTakesRaw      = false;
+    vncFlags.clientTakesHextile  = false;
+    vncFlags.clientTakesTRLE     = false;
+    vncFlags.clientTakesZRLE     = false;
+    vncFlags.clientTakesCursor   = false;
+    vncFlags.clientTakesContUpdt = false;
+    vncFlags.clientTakesFence    = false;
     selectedEncoder = -1;
 }
 
@@ -85,6 +88,8 @@ int VNCEncoder::begin() {
             selectedEncoder = mHextileEncoding;
         } else if (vncConfig.allowZRLE && vncFlags.clientTakesZRLE) {
             selectedEncoder = mZRLEEncoding;
+        } else if (vncConfig.allowTightEnc && vncFlags.clientTakesTightEnc) {
+            selectedEncoder = mTightEncoding;
         } else if (vncConfig.allowRaw && vncFlags.clientTakesRaw && (!fbPixFormat.trueColor) && (fbDepth == 8)) {
             selectedEncoder = mRawEncoding;
         }
@@ -117,6 +122,16 @@ int VNCEncoder::begin() {
     return encoderSetup();
 }
 
+Boolean VNCEncoder::encoderNeedsZLib() {
+    switch(selectedEncoder) {
+        case mZRLEEncoding:
+        case mTightEncoding:
+            return true;
+        default:
+            return false;
+    }
+}
+
 int VNCEncoder::encoderSetup() {
     switch(selectedEncoder) {
         case mTRLEEncoding: VNCEncodeTRLE::begin(); break;
@@ -124,15 +139,16 @@ int VNCEncoder::encoderSetup() {
             case mRawEncoding:     VNCEncodeRaw::begin(); break;
             case mHextileEncoding: VNCEncodeHextile::begin(); break;
             //case mZLibEncoding:  VNCEncodeZLib::begin(); break;
-            case mZRLEEncoding:
-                VNCEncodeTRLE::begin();
-                if (!vncFlags.zLibLoaded) {
-                    return EncoderDefer;
-                }
-                break;
+            case mZRLEEncoding:    VNCEncodeTRLE::begin(); break;
+            case mTightEncoding:   VNCEncodeTight::begin(); break;
         #endif
     }
-    return EncoderReady;
+
+    return
+    #if !defined(VNC_FB_MONOCHROME)
+        (encoderNeedsZLib() && !vncFlags.zLibLoaded) ? EncoderDefer :
+    #endif
+        EncoderReady;
 }
 
 unsigned long VNCEncoder::getEncoding() {
@@ -195,12 +211,15 @@ char *VNCEncoder::getEncoderName(unsigned long encoding) {
 
 void VNCEncoder::clientEncoding(unsigned long encoding, Boolean hasMore) {
     switch(encoding) {
-        case mRawEncoding:     vncFlags.clientTakesRaw     = true; break;
-        case mHextileEncoding: vncFlags.clientTakesHextile = true; break;
-        //case mZLibEncoding:    vncFlags.clientTakesZLib    = true; break;
-        case mTRLEEncoding:    vncFlags.clientTakesTRLE    = true; break;
-        case mZRLEEncoding:    vncFlags.clientTakesZRLE    = true; break;
-        case mCursorEncoding:  vncFlags.clientTakesCursor  = true; break;
+        case mRawEncoding:      vncFlags.clientTakesRaw     = true; break;
+        case mHextileEncoding:  vncFlags.clientTakesHextile = true; break;
+        //case mZLibEncoding:     vncFlags.clientTakesZLib     = true; break;
+        case mTRLEEncoding:     vncFlags.clientTakesTRLE     = true; break;
+        case mZRLEEncoding:     vncFlags.clientTakesZRLE     = true; break;
+        case mTightEncoding:    vncFlags.clientTakesTightEnc = true; break;
+        case mCursorEncoding:   vncFlags.clientTakesCursor   = true; break;
+        case mContUpdtEncoding: vncFlags.clientTakesContUpdt = true; break;
+        case mFenceEncoding:    vncFlags.clientTakesFence    = true; break;
     };
 }
 
@@ -213,6 +232,7 @@ OSErr VNCEncoder::fbSyncTasks() {
             case mRawEncoding:     size = VNCEncodeRaw::minBufferSize(); break;
             case mHextileEncoding: size = VNCEncodeHextile::minBufferSize(); break;
             case mZRLEEncoding:    size = VNCEncodeZRLE::minBufferSize(); break;
+            case mTightEncoding:    size = VNCEncodeTight::minBufferSize(); break;
         #endif
     }
     size = max(size, max(VNCPalette::minBufferSize(), VNCEncodeCursor::minBufferSize()));
@@ -237,7 +257,7 @@ OSErr VNCEncoder::fbSyncTasks() {
     // Initialize the encoders and associated modules
 
     #if !defined(VNC_FB_MONOCHROME)
-        if((selectedEncoder == mZRLEEncoding) && !vncFlags.zLibLoaded) {
+        if(encoderNeedsZLib() && !vncFlags.zLibLoaded) {
             compressSetup();
         }
     #endif
@@ -492,6 +512,8 @@ Boolean VNCEncoder::getChunk(wdsEntry *wds) {
                     return getCompressedChunk(wds);
                 #endif
                 break;
+            case mTightEncoding:
+                return VNCEncodeTight::getChunk(wds);
         }
         wds->length = epb.bytesWritten;
         wds->ptr = (Ptr) fbUpdateBuffer;

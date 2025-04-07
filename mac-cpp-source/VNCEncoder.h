@@ -59,6 +59,7 @@ class VNCEncoder {
         static unsigned int numOfSubrects();
         static void getSubrect(VNCRect *rect);
         static Boolean isNewSubrect();
+        static Boolean encoderNeedsZLib();
 
         static Boolean getCompressedChunk(EncoderPB &epb);
         static Boolean getCompressedChunk(wdsEntry *wds);

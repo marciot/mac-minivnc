@@ -66,13 +66,14 @@ enum {
     iIncremental   = 3,
     iControl       = 4,
     iHideCursor    = 5,
-    iAutoRestart   = 6,
-    iTightVNC      = 7,
-    iEnableLogs    = 8,
+    iEnableLogs    = 6,
+    iAutoRestart   = 7,
+    iTightAuth     = 8,
     iRaw           = 9,
     iHexTile       = 10,
     iTRLE          = 11,
-    iZRLE          = 12
+    iZRLE          = 12,
+    iTightEnc      = 13
 };
 
 Boolean gCancel = false;    /* this is set to true if the user cancels an operation */
@@ -423,7 +424,7 @@ Boolean DoEvent(EventRecord *event) {
                 case iHideCursor:
                     vncConfig.hideCursor = value;
                     break;
-                case iTightVNC:
+                case iTightAuth:
                     vncConfig.allowTightAuth = value;
                     break;
                 case iAutoRestart:
@@ -447,6 +448,9 @@ Boolean DoEvent(EventRecord *event) {
                 case iZRLE:
                     vncConfig.allowZRLE = value;
                     break;
+                case iTightEnc:
+                    vncConfig.allowTightEnc = value;
+                    break;
                 case iOkay:
                     ToggleWindowVisibility(gOptions);
                     break;
@@ -466,51 +470,61 @@ void RefreshServerSettings() {
     }
     SetControlValue(hHideCursor, vncConfig.hideCursor);
 
-    ControlHandle hRaw     = FindCHndl(gOptions,iRaw);
-    ControlHandle hHexTile = FindCHndl(gOptions,iHexTile);
-    ControlHandle hTRLE    = FindCHndl(gOptions,iTRLE);
-    ControlHandle hZRLE    = FindCHndl(gOptions,iZRLE);
-    ControlHandle hTight   = FindCHndl(gOptions,iTightVNC);
+    ControlHandle hRaw       = FindCHndl(gOptions,iRaw);
+    ControlHandle hHexTile   = FindCHndl(gOptions,iHexTile);
+    ControlHandle hTRLE      = FindCHndl(gOptions,iTRLE);
+    ControlHandle hZRLE      = FindCHndl(gOptions,iZRLE);
+    ControlHandle hTightEnc  = FindCHndl(gOptions,iTightEnc);
+    ControlHandle hTightAuth = FindCHndl(gOptions,iTightAuth);
 
-    if(!HasColorQD()) {
-        HiliteControl  (hRaw,     255);
-        HiliteControl  (hHexTile, 255);
-        HiliteControl  (hTRLE,    0);
-        HiliteControl  (hZRLE,    255);
-        HiliteControl  (hTight,   255);
+    #ifdef VNC_FB_MONOCHROME
+    if (true) {
+    #else
+    if (!HasColorQD()) {
+    #endif
+        HiliteControl  (hRaw,       255);
+        HiliteControl  (hHexTile,   255);
+        HiliteControl  (hTRLE,      0);
+        HiliteControl  (hZRLE,      255);
+        HiliteControl  (hTightEnc,  255);
+        HiliteControl  (hTightAuth, 255);
     } else if(vncServerActive()) {
-        HiliteControl  (hRaw,     vncFlags.clientTakesRaw     ? 0 : 255);
-        HiliteControl  (hHexTile, vncFlags.clientTakesHextile ? 0 : 255);
-        HiliteControl  (hTRLE,    vncFlags.clientTakesTRLE    ? 0 : 255);
-        HiliteControl  (hZRLE,    vncFlags.clientTakesZRLE    ? 0 : 255);
-        HiliteControl  (hTight,   255);
+        HiliteControl  (hRaw,       vncFlags.clientTakesRaw      ? 0 : 255);
+        HiliteControl  (hHexTile,   vncFlags.clientTakesHextile  ? 0 : 255);
+        HiliteControl  (hTRLE,      vncFlags.clientTakesTRLE     ? 0 : 255);
+        HiliteControl  (hZRLE,      vncFlags.clientTakesZRLE     ? 0 : 255);
+        HiliteControl  (hTightEnc,  vncFlags.clientTakesTightEnc ? 0 : 255);
+        HiliteControl  (hTightAuth, 255);
     } else {
-        HiliteControl  (hRaw,     0);
-        HiliteControl  (hHexTile, 0);
-        HiliteControl  (hTRLE,    0);
-        HiliteControl  (hZRLE,    0);
+        HiliteControl  (hRaw,       0);
+        HiliteControl  (hHexTile,   0);
+        HiliteControl  (hTRLE,      0);
+        HiliteControl  (hZRLE,      0);
+        HiliteControl  (hTightEnc,  0);
         #if USE_TIGHT_AUTH
-            HiliteControl  (hTight, vncServerStopped() ? 0 : 255);
+            HiliteControl  (hTightAuth, vncServerStopped() ? 0 : 255);
         #else
-            HiliteControl  (hTight,   255);
+            HiliteControl  (hTightAuth,   255);
         #endif
     }
 
     if(vncServerActive()) {
-        SetControlValue(hRaw,     vncFlags.clientTakesRaw       && vncConfig.allowRaw);
-        SetControlValue(hHexTile, vncFlags.clientTakesHextile   && vncConfig.allowHextile);
-        SetControlValue(hTRLE,    vncFlags.clientTakesTRLE      && vncConfig.allowTRLE);
-        SetControlValue(hZRLE,    vncFlags.clientTakesZRLE      && vncConfig.allowZRLE);
+        SetControlValue(hRaw,      vncFlags.clientTakesRaw       && vncConfig.allowRaw);
+        SetControlValue(hHexTile,  vncFlags.clientTakesHextile   && vncConfig.allowHextile);
+        SetControlValue(hTRLE,     vncFlags.clientTakesTRLE      && vncConfig.allowTRLE);
+        SetControlValue(hZRLE,     vncFlags.clientTakesZRLE      && vncConfig.allowZRLE);
+        SetControlValue(hTightEnc, vncFlags.clientTakesTightEnc  && vncConfig.allowTightEnc);
         #if USE_TIGHT_AUTH
-            SetControlValue(hTight, vncFlags.clientTakesTightAuth && vncConfig.allowTightAuth);
+            SetControlValue(hTightAuth, vncFlags.clientTakesTightAuth && vncConfig.allowTightAuth);
         #endif
     } else {
         SetControlValue(hRaw,     vncConfig.allowRaw);
         SetControlValue(hHexTile, vncConfig.allowHextile);
         SetControlValue(hTRLE,    vncConfig.allowTRLE);
         SetControlValue(hZRLE,    vncConfig.allowZRLE);
+        SetControlValue(hTightEnc,vncConfig.allowTightEnc);
         #if USE_TIGHT_AUTH
-            SetControlValue(hTight, vncConfig.allowTightAuth);
+            SetControlValue(hTightAuth, vncConfig.allowTightAuth);
         #endif
     }
 

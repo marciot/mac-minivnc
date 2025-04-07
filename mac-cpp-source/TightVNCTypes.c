@@ -35,13 +35,15 @@ struct TightVNCServerAuthCaps tightAuthCaps = {
 };
 
 struct TightVNCServerInitCaps tightInitCaps = {
-    7, // numberOfServerMesg
-    6, // numberOfClientMesg
+    8, // numberOfServerMesg
+    7, // numberOfClientMesg
     3, // numberOfEncodings
     0, // padding
 
     {
         /***** Server Messages *****/
+
+        {  150,          "TGHT", "CUS_EOCU"}, // End of continuous updates
 
         // Legacy File Transfer Messages
 
@@ -72,6 +74,8 @@ struct TightVNCServerInitCaps tightInitCaps = {
         {  0xFC000119, "TGHT", "FTLRFRLY"}, // Last request failed reply
 
         /***** Client Messages *****/
+
+        {  150,        "TGHT", "CUC_ENCU"}, // Enable continuous updates
 
         // Legacy File Transfer Messages
 

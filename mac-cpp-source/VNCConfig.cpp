@@ -19,26 +19,7 @@
 
 #include "DebugLog.h"
 
-VNCConfig vncConfig = {
-    1,            // Major version
-    4,            // Minor version
-    true,         // allowStreaming
-    true,         // allowIncremental
-    true,         // allowControl
-    true,         // hideCursor
-    true,         // allowRaw
-    true,         // allowHexTile
-    true,         // allowTRLE
-    true,         // allowZRLE
-    false,        // autoRestart
-    false,        // forceVNCAuth
-    false,        // allowTightAuth
-    false,        // enableLogging
-    5,            // zLibCompression
-    "\pMacintosh",// Session name
-    5900,         // tcpPort
-    'µVNC'        // Validation
-};
+VNCConfig vncConfig = VNC_CONFIG_DEFAULTS;
 
 StringPtr prefFileName = "\pMiniVNC Preferences";
 
