@@ -27,12 +27,13 @@ but these encodings are limited to color-capable Macs.
 
 Here are the server capabilities:
 
-| Server               | OS      | TRLE  | ZRLE    | Hextile | Uploads | Notes                              |
-|----------------------|---------|-------|---------|---------|---------|------------------------------------|
-| [MiniVNC v1.4]       | macOS 7 | Yes   |  Yes    |  Yes    |  Yes    | Compatible with all tested clients |
-| [MiniVNC v1.3]       | macOS 7 | Yes   |  Yes    |  Yes    |  No     | Compatible with all tested clients |
-| [MiniVNC v1.2]       | macOS 7 | Yes   |  Yes    |  Yes    |  No     | Crashes [TurboVNC]                 |
-| [MiniVNC v0.9]       | macOS 7 | Yes   |  No     |  No     |  No     | Only works with [RealVNC Viewer]   |
+| Server               | OS      | TRLE  | ZRLE    | Hextile | Tight | Uploads | Notes                              |
+|----------------------|---------|-------|---------|---------|-------|---------|------------------------------------|
+| [MiniVNC v1.5]       | macOS 7 | Yes   |  Yes    |  Yes    | Yes   |  Yes    | Compatible with all tested clients |
+| [MiniVNC v1.4]       | macOS 7 | Yes   |  Yes    |  Yes    | No    |  Yes    | Compatible with all tested clients |
+| [MiniVNC v1.3]       | macOS 7 | Yes   |  Yes    |  Yes    | No    |  No     | Compatible with all tested clients |
+| [MiniVNC v1.2]       | macOS 7 | Yes   |  Yes    |  Yes    | No    |  No     | Crashes [TurboVNC]                 |
+| [MiniVNC v0.9]       | macOS 7 | Yes   |  No     |  No     | No    |  No     | Only works with [RealVNC Viewer]   |
 
 Here are the client capabilities:
 
@@ -62,6 +63,7 @@ Ethernet port.
 [MiniVNC v1.2]:https://github.com/marciot/mac-minivnc/releases/tag/v1.2-beta-jan-10-2024
 [MiniVNC v1.3]:https://github.com/marciot/mac-minivnc/releases/tag/v1.3-beta-mar-3-2024
 [MiniVNC v1.4]:https://github.com/marciot/mac-minivnc/releases/tag/v1.4-beta-mar-28-2024
+[MiniVNC v1.5]:https://github.com/marciot/mac-minivnc/releases/tag/v1.5-beta-apr-06-2025
 
 Sponsorship Perks
 -----------------
